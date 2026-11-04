@@ -1,5 +1,23 @@
 # Personalized Learning Path Recommendation System
 
+> **v2 upgrade in progress (branch `upgrade/v2`).** The sections below are the
+> original README and are partly outdated; a full rewrite follows in Phase 8.
+> See [docs/PHASE1_ANALYSIS.md](docs/PHASE1_ANALYSIS.md),
+> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/CHANGELOG.md](docs/CHANGELOG.md).
+>
+> **How to run today (Windows, Python 3.11):**
+> ```powershell
+> uv venv --python 3.11 .venv        # or: py -3.11 -m venv .venv
+> .\.venv\Scripts\activate
+> pip install -r requirements-dev.txt
+> python -m ml all                   # or run the 5 root scripts in order
+> python -m pytest                   # run the test suite
+> ```
+> **Note on results:** on the original `sample_data.csv` no model beats the
+> majority-class baseline, because the features are statistically independent
+> of the labels (measured; see the analysis doc). The evaluation report says so
+> explicitly. Earlier claims of "high performance metrics" were never measured.
+
 ## Description
 
 This project aims to build an algorithm that recommends personalized learning paths for students based on their progress and learning style. By leveraging advanced techniques in recommendation systems, machine learning, educational data mining, and adaptive learning, the system seeks to enhance the educational experience by tailoring content and learning strategies to individual student needs.
