@@ -1,131 +1,126 @@
-# evaluation.py
 
-"""
-Evaluation Module for Personalized Learning Path Recommendation System
-
-This module contains functions for evaluating the performance of learning style classification,
-recommendation algorithm, and adaptive learning system using appropriate metrics.
-
-Techniques Used:
-- Model Evaluation
-- Recommendation System Evaluation
-
-Metrics Used:
-- Accuracy
-- Precision
-- Recall
-- F1-score
-- Mean Absolute Error (MAE)
-- Root Mean Squared Error (RMSE)
-
-Libraries/Tools:
-- scikit-learn
-"""
-
-import pandas as pd
+import os
 import numpy as np
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_absolute_error, mean_squared_error
+import pandas as pd
 import joblib
-import tensorflow as tf
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+)
+
 
 class ModelEvaluation:
-    def __init__(self):
-        """
-        Initialize the ModelEvaluation class.
-        """
-        pass
 
-    def load_data(self, filepath):
-        """
-        Load test data from a CSV file.
-        
-        :param filepath: str, path to the CSV file
-        :return: DataFrame, loaded data
-        """
-        return pd.read_csv(filepath)
+    def evaluate_classification(self, data):
+        print("\n1. LEARNING STYLE CLASSIFICATION")
+        print("--------------------------------")
 
-    def load_model(self, model_filepath):
-        """
-        Load a trained model from a file.
-        
-        :param model_filepath: str, path to the saved model
-        :return: model, loaded model
-        """
-        return joblib.load(model_filepath)
+        X = data.drop(
+            columns=["StudentID", "LearningStyle", "avg_performance"],
+            errors="ignore"
+        )
 
-    def evaluate_classification(self, model, X_test, y_test):
-        """
-        Evaluate a classification model using accuracy, precision, recall, and F1-score.
-        
-        :param model: trained model
-        :param X_test: DataFrame, testing features
-        :param y_test: Series, testing target
-        :return: dict, evaluation metrics
-        """
-        y_pred = model.predict(X_test)
-        metrics = {
-            'accuracy': accuracy_score(y_test, y_pred),
-            'precision': precision_score(y_test, y_pred, average='weighted'),
-            'recall': recall_score(y_test, y_pred, average='weighted'),
-            'f1_score': f1_score(y_test, y_pred, average='weighted')
-        }
-        return metrics
+        y = data["LearningStyle"]
 
-    def evaluate_regression(self, model, X_test, y_test):
-        """
-        Evaluate a regression model using MAE and RMSE.
-        
-        :param model: trained model
-        :param X_test: DataFrame, testing features
-        :param y_test: Series, testing target
-        :return: dict, evaluation metrics
-        """
-        y_pred = model.predict(X_test)
-        metrics = {
-            'mae': mean_absolute_error(y_test, y_pred),
-            'rmse': np.sqrt(mean_squared_error(y_test, y_pred))
-        }
-        return metrics
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
+            test_size=0.2,
+            random_state=42,
+            stratify=y
+        )
 
-    def evaluate_adaptive_system(self, model, scaler, X_test, y_test):
-        """
-        Evaluate an adaptive learning system using MAE and RMSE.
-        
-        :param model: trained model
-        :param scaler: scaler used for preprocessing
-        :param X_test: DataFrame, testing features
-        :param y_test: Series, testing target
-        :return: dict, evaluation metrics
-        """
-        X_test = scaler.transform(X_test)
-        y_pred = model.predict(X_test)
-        metrics = {
-            'mae': mean_absolute_error(y_test, y_pred),
-            'rmse': np.sqrt(mean_squared_error(y_test, y_pred))
-        }
-        return metrics
+        model = joblib.load("models/decision_tree_model.pkl")
+        pipeline = joblib.load("models/feature_pipeline.pkl")
+
+        X_test = pipeline.transform(X_test)
+        predictions = model.predict(X_test)
+
+        print("Accuracy:", round(accuracy_score(y_test, predictions), 4))
+        print("Precision:", round(
+            precision_score(y_test, predictions, average="weighted", zero_division=0), 4
+        ))
+        print("Recall:", round(
+            recall_score(y_test, predictions, average="weighted", zero_division=0), 4
+        ))
+        print("F1 Score:", round(
+            f1_score(y_test, predictions, average="weighted", zero_division=0), 4
+        ))
+
+    def evaluate_recommendations(self, data):
+        print("\n2. RECOMMENDATION SYSTEM")
+        print("-----------------------")
+
+        model = joblib.load("models/recommendation_model.pkl")
+        pipeline = joblib.load("models/recommendation_pipeline.pkl")
+
+        features = data.drop(
+            columns=["StudentID", "avg_performance"],
+            errors="ignore"
+        )
+
+        transformed = pipeline.transform(features)
+
+        distances, indices = model.kneighbors(
+            transformed,
+            n_neighbors=2
+        )
+
+        nearest_distances = []
+
+        for i, row_indices in enumerate(indices):
+            for j, index in enumerate(row_indices):
+                if data.iloc[index]["StudentID"] != data.iloc[i]["StudentID"]:
+                    nearest_distances.append(distances[i][j])
+                    break
+
+        if nearest_distances:
+            print("Students checked:", len(nearest_distances))
+            print(
+                "Average distance to nearest similar student:",
+                round(float(np.mean(nearest_distances)), 4)
+            )
+
+        print("Recommendation model loaded and tested successfully.")
+        print("Note: Distance is a similarity measure, not an accuracy score.")
+
+    
+    def evaluate_adaptive_system(self, data):
+        print("\n3. ADAPTIVE LEARNING SYSTEM")
+        print("---------------------------")
+
+        model_path = "models/adaptive_learning_model.pkl"
+
+        if not os.path.exists(model_path):
+            print("Adaptive learning model not found.")
+            return
+
+        model = joblib.load(model_path)
+
+        print("Adaptive model loaded successfully!")
+        print("Model type:", type(model).__name__)
+
+        print("Note: Prediction accuracy cannot be calculated without")
+        print("real student feedback or known correct action labels.")
+
+
 
 if __name__ == "__main__":
-    test_data_filepath = 'data/processed/preprocessed_student_data_test.csv'
-    target_column = 'learning_path'
+
+    data_filepath = "data/processed/preprocessed_student_data.csv"
+
+    data = pd.read_csv(data_filepath)
 
     evaluator = ModelEvaluation()
-    data = evaluator.load_data(test_data_filepath)
-    X_test = data.drop(columns=[target_column])
-    y_test = data[target_column]
 
-    # Load and evaluate learning style classification model
-    classification_model = evaluator.load_model('models/decision_tree_model.pkl')
-    classification_metrics = evaluator.evaluate_classification(classification_model, X_test, y_test)
-    print("Learning Style Classification Evaluation:", classification_metrics)
+    evaluator.evaluate_classification(data)
+    evaluator.evaluate_recommendations(data)
+    evaluator.evaluate_adaptive_system(data)
 
-    # Load and evaluate recommendation model
-    recommendation_model = evaluator.load_model('models/recommendation_model.pkl')
-    recommendation_metrics = evaluator.evaluate_regression(recommendation_model, X_test, y_test)
-    print("Recommendation Model Evaluation:", recommendation_metrics)
-
-    # Load and evaluate adaptive learning system
-    scaler = joblib.load('models/scaler.pkl')
-    adaptive_model = tf.keras.models.load_model('models/adaptive_learning_model.h5')
-    adaptive_metrics = evaluator.evaluate_adaptive_system(adaptive_model, scaler, X_test, y_test)
-    print("Adaptive Learning System Evaluation:", adaptive_metrics)
+    print("\n--------------------------------")
+    print("PROJECT EVALUATION COMPLETED!")
+    print("--------------------------------")
