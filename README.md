@@ -5,22 +5,25 @@
 > See [docs/PHASE1_ANALYSIS.md](docs/PHASE1_ANALYSIS.md),
 > [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/CHANGELOG.md](docs/CHANGELOG.md).
 >
-> **How to run today (Windows, Python 3.11):**
+> **How to run today (Windows; Python 3.11–3.15, Node.js 20.19+):**
 > ```powershell
-> uv venv --python 3.11 .venv        # or: py -3.11 -m venv .venv
-> .\.venv\Scripts\activate
-> pip install -r requirements-dev.txt
-> python -m ml all                   # or run the 5 root scripts in order
-> python -m pytest                   # run the test suite
+> python -m venv .venv                               # any Python 3.11-3.15 (verified with 3.11 and 3.15)
+> .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+> .\.venv\Scripts\python.exe -m pytest               # 88 tests
 >
-> # Terminal 1 – backend API (creates + seeds data/app.db on first start)
-> python -m uvicorn backend.app.main:app --reload     # API docs: http://127.0.0.1:8000/docs
+> # Terminal 1 - backend API (creates + seeds data/app.db on first start, trains models in ~5-10 s)
+> .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --reload   # API docs: http://127.0.0.1:8000/docs
 >
-> # Terminal 2 – web app (Node.js 20+)
+> # Terminal 2 - web app
 > cd frontend
 > npm install
-> npm run dev                                         # open http://localhost:5173
+> npm run dev                                        # open http://localhost:5173
 > ```
+> Windows notes: calling `.\.venv\Scripts\python.exe` directly avoids needing `Activate.ps1`
+> (which PowerShell blocks under the default `Restricted` execution policy; if `npm` is blocked
+> for the same reason, use `npm.cmd`). Projects inside a OneDrive-synced folder work but are
+> noticeably slower (tests ~3x); a non-synced folder is faster. Data lives in `data/app.db`
+> and survives restarts; `python -m backend.app.seed --reset` restores the sample data.
 > API reference: [docs/API.md](docs/API.md) · Frontend: [docs/FRONTEND.md](docs/FRONTEND.md) · AI/ML models and their measured results: [docs/ML_MODELS.md](docs/ML_MODELS.md).
 > **Note on results:** on the original `sample_data.csv` no model beats the
 > majority-class baseline, because the features are statistically independent

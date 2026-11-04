@@ -1,5 +1,24 @@
 # Changelog
 
+## Phase 7 – Local run on Windows
+
+### Fixed
+* `pip install -r requirements.txt` failed on Python 3.15 (the laptop's default `python`):
+  numpy 2.4.6 has no 3.15 wheel. numpy/scipy are now pinned per Python version
+  (2.4.6/1.17.1 on 3.11, 2.5.4/1.18.1 on 3.12+). Verified: clean copy, plain `python -m venv`
+  + pip on 3.15 -> 88/88 tests pass and identical model metrics; `npm ci` + build pass.
+* `e2e-ai.mjs` could act on a seeded student when its localStorage-based student selection
+  lost a race with the app's own first-load selection. It now selects the student through
+  the real switcher UI and aborts before any action if the test student is not selected;
+  tabs are clicked by `role="tab"` (recommendation cards also contain the word "Collaborative").
+
+### Verified
+* Restart persistence on a database copy: all data, recommendations, skills and bandit
+  counts identical after a full backend restart; seeding does not re-run on a non-empty DB;
+  models retrain at start-up and include new attempts.
+* README: Windows run instructions without `Activate.ps1`, Python 3.11-3.15.
+
+
 ## Phase 6 – Full integration verification
 
 ### Fixed

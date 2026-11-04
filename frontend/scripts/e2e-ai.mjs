@@ -39,10 +39,26 @@ async function online() {
     body: JSON.stringify({ name: 'AI Flow Tester', email, age: 27, preferred_content: 'Videos', learning_style: 'Visual' }) })
   const sid = student.id
   try {
-    await goto('/')
-    await evaluate(`localStorage.setItem('currentStudentId', '${sid}')`)
+    // Select the test student the way a user does: through the top-bar student switcher.
     await goto('/learning')
-    step('Viewing the new test student', await waitFor(`document.querySelector('[aria-haspopup=listbox]')?.innerText.includes('Student #${sid}')`))
+    await waitFor(`/Student #\\d+/.test(document.querySelector('[aria-haspopup=listbox]')?.innerText || '')`, 15000)
+    await evaluate(`document.querySelector('[aria-haspopup=listbox]').click()`)
+    await waitFor(`document.querySelector('input[aria-label="Search students"]')`)
+    await evaluate(`(() => {
+      const input = document.querySelector('input[aria-label="Search students"]')
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(email)})
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })()`)
+    await waitFor(`[...document.querySelectorAll('[role=option]')].some((o) => o.innerText.includes('#${sid}'))`, 10000)
+    await evaluate(`[...document.querySelectorAll('[role=option]')].find((o) => o.innerText.includes('#${sid}')).click()`)
+    const viewing = await waitFor(`document.querySelector('[aria-haspopup=listbox]')?.innerText.includes('Student #${sid}')`, 15000)
+    step('Viewing the new test student', viewing)
+    // Safety: never act on seeded students. Abort before any click if the test student is not selected.
+    if (!viewing) {
+      const seen = await evaluate(`JSON.stringify({ stored: localStorage.getItem('currentStudentId'),
+        switcher: document.querySelector('[aria-haspopup=listbox]')?.innerText, path: location.pathname })`)
+      throw new Error(`Test student ${sid} is not selected (${seen}); aborting before any changes`)
+    }
 
     // ---- empty states for a brand-new student
     step('Empty state: My Learning has no active courses', await waitFor(text('No active courses')))
@@ -62,7 +78,8 @@ async function online() {
     // ---- switching recommendation methods re-queries the API
     for (const [tab, phrase] of [['Collaborative', 'Item-to-item similarity'], ['Content-based', 'your topic interests'],
       ['Popular (baseline)', 'the baseline the models are compared with'], ['Hybrid', 'Blend of collaborative']]) {
-      await click(tab)
+      // Click the tab itself: recommendation cards also contain words like "Collaborative" in their score text.
+      await b.evaluate(`[...document.querySelectorAll('[role=tab]')].find((t) => t.innerText.trim() === ${JSON.stringify(tab)})?.click()`)
       step(`Method tab "${tab}" loads its ranking`, await waitFor(`${text(phrase)} && document.querySelector('main ol li')`, 15000))
     }
 
