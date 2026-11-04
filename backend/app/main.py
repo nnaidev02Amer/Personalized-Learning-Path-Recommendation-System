@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from backend.app.config import Settings, get_settings
 from backend.app.database import Database
-from backend.app.errors import install_error_handlers
+from backend.app.errors import InsufficientData, install_error_handlers
 from backend.app.ml_service import MLService
 from backend.app.models import Course
 from backend.app.routers import courses, learning, meta, students
@@ -32,7 +32,9 @@ def _train_in_background(database: Database, ml_service: MLService) -> None:
     def run():
         try:
             with database.SessionLocal() as db:
-                ml_service.train(db)
+                ml_service.ensure_trained(db)
+        except InsufficientData as exc:
+            log.info("ML models not trained yet: %s", exc.message)
         except Exception:   # never crash the server because of training
             log.exception("Background ML training failed; models will train on first ML request")
     threading.Thread(target=run, name="ml-training", daemon=True).start()

@@ -14,6 +14,7 @@ All errors use one shape:
 | 404 | `not_found` |
 | 409 | `email_taken`, `already_enrolled`, `prerequisites_not_met`, `not_enrolled`, `not_completed`, `enrollment_not_active`, `invalid_status_change`, `conflict` |
 | 422 | `validation_error` (with `details: [{field, message}]`) |
+| 503 | `ml_insufficient_data` (AI endpoints when the database has too little data to train: < 10 students with 2+ enrolments or < 30 quiz attempts) |
 | 500 | `internal_error` (no stack trace leaked) |
 
 ## Meta

@@ -1,5 +1,23 @@
 # Changelog
 
+## Phase 6 – Full integration verification
+
+### Fixed
+* Concurrent first AI requests each started a full model training (4 parallel requests ->
+  4 trainings); training is now single-flight (re-entrant lock + double-checked readiness).
+* An empty/too-small database crashed AI endpoints with a 500 ("empty vocabulary"); they now
+  return 503 `ml_insufficient_data` with an explanation, and start-up logs it calmly.
+
+### Added
+* `tests/backend/test_ml_integration.py` (single-flight training, insufficient data, cold
+  start, outputs updating as student data changes) and `test_endpoint_coverage.py` (every
+  OpenAPI route called with valid data and documented in `docs/API.md`). 88 Python tests.
+* `frontend/scripts/lib/browser.mjs` (shared DevTools-protocol driver) and
+  `npm run e2e:ai` (36 UI checks incl. responsive overflow at 375/768/1280 px, throttled
+  loading skeletons, empty/error states, offline mode).
+* Documented model limitations in `docs/ML_MODELS.md`.
+
+
 ## Phase 5 – AI/ML integration
 
 ### Added

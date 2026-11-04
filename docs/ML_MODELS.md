@@ -82,6 +82,24 @@ training data is mostly synthetic; as real usage accumulates, retrain from the
 Model Evaluation page and the verdicts update automatically (UI text is driven
 by the stored evaluation, not hard-coded).
 
+## Known limitations (read before relying on an output)
+* **No model significantly beats its strongest baseline on the seeded data** (tables above).
+  Treat outputs as illustrations of the pipeline, not as validated advice.
+* **BKT mastery is dominated by its prior.** The fitted parameters sit at the edge of the
+  grid (P(init) 0.9, P(learn) 0.45), i.e. the data is best explained by "most skills are
+  already known". A student with 1 of 2 answers correct can therefore show ~96% mastery, and
+  gaps are rarely flagged. The UI always shows the raw answer count and accuracy next to the
+  estimate. Per-skill evidence is thin because each skill appears in one 4-question quiz.
+* **Difficulty bandit** was trained on 455 Beginner / 132 Intermediate / 8 Advanced attempts,
+  so its Advanced estimate is very uncertain; the card shows when it is exploring.
+* **Learning-style model** is flagged unreliable; the app personalises with the self-reported style.
+* **Recommendations** never beat popularity significantly; with ~4.6 unlocked candidates,
+  hit rate is ~1 for every method, so only NDCG/MRR are informative.
+* **Retraining** (Model Evaluation page) re-runs every evaluation on the current database; the
+  numbers above are for the freshly seeded database and change as real usage is added.
+* **Insufficient data**: with fewer than 10 students with 2+ enrolments or 30 quiz attempts the
+  AI endpoints return 503 `ml_insufficient_data` instead of training on too little data.
+
 ## Synthetic data used for training
 `backend/app/seed/generator.py` simulates per-question quiz answers:
 P(correct) = σ(ability + skill strength − 0.6·(level−2) + trend·day + 0.5·retake).

@@ -4,130 +4,15 @@
 // Usage (backend on :8000 and frontend on :5173 or :4173 must be running):
 //   npm run e2e                        # default http://127.0.0.1:5173
 //   $env:E2E_URL="http://127.0.0.1:4173"; npm run e2e
-//
-// Uses Microsoft Edge or Google Chrome via the DevTools protocol (no extra npm
-// packages). Override the browser with $env:E2E_BROWSER="C:\path\to\chrome.exe".
 // The test creates its own student and deletes it at the end.
 
-import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { DIALOG, launch, reporter, sleep, text } from './lib/browser.mjs'
 
 const BASE = (process.env.E2E_URL || 'http://127.0.0.1:5173').replace(/\/$/, '')
-const PORT = 9333
-const CANDIDATES = [
-  process.env.E2E_BROWSER,
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  '/usr/bin/google-chrome', '/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-].filter(Boolean)
+const { step, finish } = reporter()
+const b = await launch({ base: BASE })
+const { goto, click, fill, waitFor, evaluate, api } = b
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const results = []
-const consoleErrors = []
-
-function step(name, ok, detail = '') {
-  results.push({ name, ok })
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  (${detail})` : ''}`)
-}
-
-// ---------------------------------------------------------------- browser
-const browserPath = CANDIDATES.find((p) => existsSync(p))
-if (!browserPath) {
-  console.error('No Edge/Chrome found. Set E2E_BROWSER to a Chromium-based browser executable.')
-  process.exit(2)
-}
-const profileDir = mkdtempSync(join(tmpdir(), 'pathwise-e2e-'))
-const browser = spawn(browserPath, ['--headless=new', '--disable-gpu', '--no-first-run', `--remote-debugging-port=${PORT}`,
-  `--user-data-dir=${profileDir}`, '--window-size=1366,900', 'about:blank'], { stdio: 'ignore' })
-
-async function pageSocket() {
-  for (let i = 0; i < 50; i++) {
-    try {
-      const targets = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json()
-      const page = targets.find((t) => t.type === 'page')
-      if (page) return page.webSocketDebuggerUrl
-    } catch { /* browser still starting */ }
-    await sleep(200)
-  }
-  throw new Error('Browser did not expose a debuggable page')
-}
-
-const ws = new WebSocket(await pageSocket())
-await new Promise((r) => ws.addEventListener('open', r, { once: true }))
-let nextId = 1
-const pending = new Map()
-ws.addEventListener('message', (ev) => {
-  const msg = JSON.parse(ev.data)
-  if (msg.id && pending.has(msg.id)) {
-    pending.get(msg.id)(msg)
-    pending.delete(msg.id)
-  } else if (msg.method === 'Runtime.exceptionThrown') {
-    consoleErrors.push(msg.params.exceptionDetails.exception?.description || msg.params.exceptionDetails.text)
-  } else if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
-    consoleErrors.push(msg.params.args.map((a) => a.value ?? a.description).join(' '))
-  }
-})
-const send = (method, params = {}) => new Promise((resolve) => {
-  const id = nextId++
-  pending.set(id, resolve)
-  ws.send(JSON.stringify({ id, method, params }))
-})
-await send('Runtime.enable')
-await send('Page.enable')
-
-async function evaluate(expression) {
-  const res = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
-  if (res.result?.exceptionDetails) throw new Error(res.result.exceptionDetails.exception?.description || 'evaluate failed')
-  return res.result?.result?.value
-}
-
-async function waitFor(expression, timeout = 10000) {
-  const end = Date.now() + timeout
-  while (Date.now() < end) {
-    if (await evaluate(`(() => { try { return Boolean(${expression}) } catch { return false } })()`)) return true
-    await sleep(150)
-  }
-  return false
-}
-
-const text = (s) => `document.body.innerText.includes(${JSON.stringify(s)})`
-
-async function goto(path) {
-  await send('Page.navigate', { url: BASE + path })
-  await waitFor('document.querySelector("main")', 15000)
-}
-
-// Click the first visible button/link whose text contains `label` (optionally inside `scope`).
-async function click(label, scope = 'document') {
-  return evaluate(`(() => {
-    const els = [...${scope}.querySelectorAll('button, a, label')]
-      .filter((e) => e.offsetParent !== null && !e.disabled && e.innerText.trim().includes(${JSON.stringify(label)}))
-    if (!els.length) return false
-    els[0].click()
-    return true
-  })()`)
-}
-
-// Set a React-controlled input/select by its <label> text.
-async function fill(labelText, value, scope = 'document') {
-  return evaluate(`(() => {
-    const label = [...${scope}.querySelectorAll('label')].find((l) => l.innerText.trim() === ${JSON.stringify(labelText)})
-    const el = label && document.getElementById(label.htmlFor)
-    if (!el) return false
-    const proto = el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype
-    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(String(value))})
-    el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }))
-    return true
-  })()`)
-}
-
-const DIALOG = 'document.querySelector("[role=dialog]")'
-const api = (path, init) => fetch(`${BASE}/api${path}`, init).then((r) => (r.status === 204 ? null : r.json()))
-
-// ------------------------------------------------------------------ flow
 let createdId = null
 const email = `e2e.${Date.now()}@example.edu`
 try {
@@ -143,14 +28,14 @@ try {
   await waitFor(text('New student'))
   await click('New student')
   await waitFor(text('Create a new student'))
-  await click('Create student', 'document.querySelector("[role=dialog]")')
+  await click('Create student', DIALOG)
   step('Create form shows validation errors for empty fields', await waitFor(text('Name is required')))
   await fill('Full name', 'E2E Test Learner', DIALOG)
   await fill('Email', email, DIALOG)
   await fill('Age', 23, DIALOG)
   await fill('Learning style', 'Visual', DIALOG)
   await fill('Preferred content format', 'Videos', DIALOG)
-  await click('Create student', 'document.querySelector("[role=dialog]")')
+  await click('Create student', DIALOG)
   step('New student created and selected', await waitFor(text('Now viewing E2E Test Learner'), 10000))
   createdId = (await api(`/students?search=${encodeURIComponent(email)}`)).items[0]?.id
   // Safety: never modify seeded students. Stop unless the new student is the one selected.
@@ -161,13 +46,13 @@ try {
   await goto('/courses')
   await waitFor(text('Functions & Data Structures'))
   await click('Functions & Data Structures')
-  await waitFor('document.querySelector("[role=dialog]")')
+  await waitFor(DIALOG)
   step('Locked course shows its prerequisites', await waitFor(text('Prerequisites required')))
-  await click('Close', 'document.querySelector("[role=dialog]")')
+  await click('Close', DIALOG)
   await click('Python Fundamentals')
-  await waitFor('document.querySelector("[role=dialog]")')
+  await waitFor(DIALOG)
   await waitFor(text('Lessons (5)'))
-  await click('Enroll', 'document.querySelector("[role=dialog]")')
+  await click('Enroll', DIALOG)
   step('Enroll button enrolls the student', await waitFor(text('You are now enrolled in Python Fundamentals')))
 
   // My Learning: complete all lessons.
@@ -215,7 +100,6 @@ try {
   await evaluate('document.querySelector("[aria-label^=\'Switch to\']").click()')
   step('Theme toggle switches light/dark', await waitFor(`document.documentElement.classList.contains("dark") === ${!before}`))
 
-  // Roadmap + recommendations pages render.
   await goto('/roadmap')
   step('Roadmap renders tracks and model-ranked next steps', await waitFor(`${text('Next steps')} && ${text('ML ranked')}`, 20000))
   await goto('/recommendations')
@@ -241,12 +125,7 @@ try {
   step(`Unexpected error: ${e.message}`, false)
 } finally {
   if (createdId) await api(`/students/${createdId}`, { method: 'DELETE' }).catch(() => {})
-  step('No uncaught errors in the browser console', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '))
-  ws.close()
-  browser.kill()
-  await sleep(500)
-  try { rmSync(profileDir, { recursive: true, force: true }) } catch { /* browser may still hold files */ }
-  const failed = results.filter((r) => !r.ok).length
-  console.log(`\n${results.length - failed}/${results.length} checks passed`)
-  process.exit(failed ? 1 : 0)
+  step('No uncaught errors in the browser console', b.consoleErrors.length === 0, b.consoleErrors.slice(0, 3).join(' | '))
+  await b.close()
+  process.exit(finish())
 }

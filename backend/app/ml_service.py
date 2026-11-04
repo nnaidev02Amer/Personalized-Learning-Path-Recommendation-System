@@ -24,7 +24,7 @@ import pandas as pd
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from backend.app.errors import NotFound
+from backend.app.errors import InsufficientData, NotFound
 from backend.app.models import Course, Student
 from ml import bandit as bandit_mod
 from ml import config as ml_config
@@ -34,6 +34,8 @@ from ml.learner_state import CONTEXT_NAMES, FEATURES, build_state, quiz_meta, re
 
 log = logging.getLogger("backend.ml")
 REPORT_FILE = "ml_evaluation.json"
+MIN_STUDENTS = 10   # with 2+ enrolments (needed for leave-last-out evaluation)
+MIN_ATTEMPTS = 30
 
 
 # ------------------------------------------------------------- data loading
@@ -80,7 +82,8 @@ def answer_observations(attempts: pd.DataFrame, questions: pd.DataFrame) -> tupl
 # ------------------------------------------------------------------ service
 class MLService:
     def __init__(self):
-        self._lock = threading.Lock()
+        # Re-entrant: ensure_trained() holds the lock while calling train().
+        self._lock = threading.RLock()
         self.trained_at: str | None = None
         self.report: dict | None = None
 
@@ -89,14 +92,29 @@ class MLService:
         return self.trained_at is not None
 
     def ensure_trained(self, db: Session) -> None:
-        if not self.ready:
-            self.train(db)
+        if self.ready:
+            return
+        with self._lock:          # concurrent first requests wait for one training run
+            if not self.ready:
+                self.train(db)
+
+    @staticmethod
+    def check_enough_data(f: dict, obs: pd.DataFrame) -> None:
+        enrol_counts = f["enrollments"].groupby("student_id").size()
+        students_2plus = int((enrol_counts >= 2).sum())
+        attempts = len(f["attempts"])
+        if len(f["courses"]) < 2 or students_2plus < MIN_STUDENTS or attempts < MIN_ATTEMPTS or obs.empty:
+            raise InsufficientData(
+                f"Not enough data to train the AI models yet: need at least {MIN_STUDENTS} students with 2+ "
+                f"enrolments and {MIN_ATTEMPTS} quiz attempts (have {students_2plus} and {attempts}). "
+                "Seed the sample data with `python -m backend.app.seed` or keep using the app.")
 
     def train(self, db: Session) -> dict:
         with self._lock:
             started = time.perf_counter()
             f = load_frames(db)
             obs, per_attempt = answer_observations(f["attempts"], f["questions"])
+            self.check_enough_data(f, obs)
             preferred = f["students"].set_index("id")["preferred_content"].to_dict()
             style_features = style_model.build_features(f["students"], f["enrollments"], f["attempts"],
                                                         f["activity"], f["courses"])

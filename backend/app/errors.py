@@ -40,6 +40,12 @@ class Invalid(AppError):
     code = "validation_error"
 
 
+class InsufficientData(AppError):
+    """The ML models cannot be trained from the data currently in the database."""
+    status_code = 503
+    code = "ml_insufficient_data"
+
+
 class Conflict(AppError):
     status_code = 409
     code = "conflict"

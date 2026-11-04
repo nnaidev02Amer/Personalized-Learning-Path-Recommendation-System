@@ -24,7 +24,8 @@ no CORS setup is needed. Change the target with `VITE_API_PROXY_TARGET`
 | `npm run dev` | Development server with hot reload |
 | `npm run build` | Production build into `frontend/dist` |
 | `npm run preview` | Serve the production build on http://localhost:4173 (also proxies `/api`) |
-| `npm run e2e` | Browser smoke test of the whole workflow (needs backend + dev/preview server running; uses installed Edge/Chrome) |
+| `npm run e2e` | Browser smoke test of the whole workflow, 21 checks (needs backend + dev/preview server running; uses installed Edge/Chrome) |
+| `npm run e2e:ai` | AI/ML integration through the UI, 36 checks: cold start, method switching, outputs updating after enrol/lessons/quiz, online bandit update, assistant, retrain, loading/empty/error states, no horizontal overflow at 375/768/1280 px. `E2E_SCREENSHOTS=<dir>` saves screenshots; `E2E_OFFLINE=1` checks the backend-down experience |
 
 ## Structure
 
