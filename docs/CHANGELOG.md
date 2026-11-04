@@ -1,5 +1,31 @@
 # Changelog
 
+## Phase 5 – AI/ML integration
+
+### Added
+* `ml/`: recommenders (content-based, item-kNN collaborative, hybrid, popularity),
+  Bayesian Knowledge Tracing, LinUCB difficulty bandit, gradient-boosting score
+  prediction, behaviour-based learning-style model, point-in-time learner state,
+  paired-bootstrap statistics.
+* `backend/app/ml_service.py`: trains/evaluates every model from SQLite (background
+  thread at start-up), serves per-student outputs from live rows, updates the bandit
+  online after each quiz. `backend/app/assistant.py`: grounded assistant with
+  optional Claude API (`anthropic` SDK) and automatic fallback.
+* 9 endpoints under `/api/ml/*` and `/api/students/{id}/…` (see `docs/API.md`).
+* Frontend: rebuilt AI Recommendations page (method switcher, assistant chat,
+  skill mastery, adaptive difficulty, predicted scores, learning style), new Model
+  Evaluation page with retrain, "Recommended for you" on the dashboard, model-ranked
+  next steps on the roadmap. Model outputs carry "ML model output" / "Synthetic
+  history" badges; evaluation verdicts are data-driven, never hard-coded.
+* Seed generator: per-question answers from a documented learner simulator (+ retakes),
+  needed for BKT. 27 new tests (83 Python tests), e2e extended to 21 checks.
+* `docs/ML_MODELS.md` with the measured results.
+
+### Results (honest)
+On the seeded (synthetic) database no model significantly beats its strongest
+baseline; the learning-style model is flagged unreliable. Details in `docs/ML_MODELS.md`.
+
+
 ## Phase 4 – Frontend (React + Vite + Tailwind + Recharts)
 
 ### Added

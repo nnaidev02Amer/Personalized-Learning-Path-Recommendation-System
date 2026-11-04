@@ -47,6 +47,7 @@ export default function Roadmap() {
   const [openId, setOpenId] = useState(null)
   const courses = useApi(() => api.courses.list(), [])
   const enrollments = useApi(() => api.enrollments.list(studentId), [studentId])
+  const ranked = useApi(() => api.ai.recommendations(studentId, 'hybrid', 5), [studentId, enrollments.data])
 
   const statuses = useMemo(() => courseStatuses(courses.data?.items, enrollments.data), [courses.data, enrollments.data])
   const tracks = useMemo(() => {
@@ -64,15 +65,20 @@ export default function Roadmap() {
 
   const all = courses.data.items
   const count = (s) => all.filter((c) => statuses.get(c.id)?.status === s).length
-  const upNext = all.filter((c) => statuses.get(c.id)?.status === 'available')
-    .sort((a, b) => a.level - b.level || a.code.localeCompare(b.code)).slice(0, 5)
+  const byId = new Map(all.map((c) => [c.id, c]))
+  // Model-ranked when the ML service answers; otherwise a clearly labelled rule-based order.
+  const modelRanked = Boolean(ranked.data)
+  const upNext = modelRanked
+    ? ranked.data.items.map((r) => ({ ...byId.get(r.course_id), reason: r.reasons[0] })).filter((c) => c.id)
+    : all.filter((c) => statuses.get(c.id)?.status === 'available')
+      .sort((a, b) => a.level - b.level || a.code.localeCompare(b.code)).slice(0, 5)
 
   return (
     <div className="space-y-6">
       <PageHeader title="Learning Roadmap" description="Every course track, ordered by level, with your real progress and prerequisite locks." />
       <Notice title="How this roadmap is built">
-        It is computed from course prerequisites and your enrolments — not by an AI model.
-        Personalised, model-ranked paths are added in Phase 5 (AI/ML integration).
+        The tracks and locks come from course prerequisites and your real enrolments. The “Next steps” list is
+        ranked by the hybrid recommender model (collaborative + content-based) among the courses you have unlocked.
       </Notice>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -110,7 +116,10 @@ export default function Roadmap() {
             )
           })}
         </div>
-        <Card title="Unlocked next" subtitle="Prerequisites met · lowest level first" className="h-fit">
+        <Card title="Next steps" className="h-fit"
+              subtitle={modelRanked ? 'Ranked by the hybrid recommender · unlocked courses' : 'Rule-based (model unavailable): lowest level first'}
+              action={modelRanked ? <Badge tone="brand">ML ranked</Badge> : <Badge>Rule-based</Badge>}>
+          {ranked.loading && !ranked.data && <p className="mb-2 text-xs text-ink-3">Ranking with the model…</p>}
           {upNext.length === 0 ? (
             <EmptyState icon={MapIcon} title="Nothing unlocked" message="Finish your active courses to unlock new ones." />
           ) : (
@@ -120,6 +129,7 @@ export default function Roadmap() {
                   <button onClick={() => setOpenId(c.id)} className="w-full rounded-lg border border-line p-3 text-left hover:bg-surface-2">
                     <p className="text-sm font-medium text-ink">{c.title}</p>
                     <p className="text-xs text-ink-3">{c.code} · {c.difficulty} · {c.content_format}</p>
+                    {c.reason && <p className="mt-1 text-xs text-ink-2">{c.reason}</p>}
                   </button>
                 </li>
               ))}

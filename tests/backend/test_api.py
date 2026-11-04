@@ -54,7 +54,10 @@ def test_seeded_students_keep_original_profile_values(client):
         assert s["preferred_content"] == row.PreferredContent and s["is_synthetic"] is True
         summary = client.get(f"/api/students/{sid}/summary").json()
         assert summary["completed_courses"] == row.CompletedCourses
-        assert abs(summary["average_quiz_score"] - row.AverageScore) < 3
+        # Seeded scores are whole correct answers out of 4 per quiz; the generator fixes the total
+        # correct count to round(AverageScore% x questions), so the mean is within 50/N points.
+        bound = 50 / (4 * summary["quizzes_taken"]) + 0.1
+        assert abs(summary["average_quiz_score"] - row.AverageScore) <= bound
 
 
 @pytest.mark.parametrize("params", [{"limit": 0}, {"limit": 101}, {"offset": -1},

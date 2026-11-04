@@ -34,6 +34,8 @@ class Settings:
     # Create tables and load the sample data automatically when the DB is empty.
     seed_on_startup: bool = field(default_factory=lambda: _bool("SEED_ON_STARTUP", True))
     seed_random_state: int = field(default_factory=lambda: int(os.environ.get("SEED_RANDOM_STATE", "42")))
+    # Train the ML models in a background thread at startup (otherwise on first ML request).
+    ml_train_on_startup: bool = field(default_factory=lambda: _bool("ML_TRAIN_ON_STARTUP", True))
 
 
 def get_settings() -> Settings:

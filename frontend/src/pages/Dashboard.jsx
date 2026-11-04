@@ -11,6 +11,9 @@ import Button from '../components/ui/Button'
 import ProgressBar from '../components/ui/ProgressBar'
 import { EmptyState, ErrorState, PageSkeleton } from '../components/ui/States'
 import WeeklyActivityChart from '../components/charts/WeeklyActivityChart'
+import RecommendationList from '../components/ai/RecommendationList'
+import { ModelBadge } from '../components/ai/AiParts'
+import CourseDetailModal from '../components/course/CourseDetailModal'
 import { FORMAT_ICON } from '../utils/courseStatus'
 import { firstName, formatDate, formatMinutes, greeting, percent, relativeDay, score } from '../utils/format'
 
@@ -73,6 +76,8 @@ export default function Dashboard() {
   const summary = useApi(() => api.students.summary(id), [id, version])
   const progress = useApi(() => api.students.progress(id, 8), [id, version])
   const enrollments = useApi(() => api.enrollments.list(id), [id])
+  const recs = useApi(() => api.ai.recommendations(id, 'hybrid', 3), [id, version])
+  const [openId, setOpenId] = useState(null)
 
   const loading = summary.loading && !summary.data
   const error = summary.error || progress.error || enrollments.error
@@ -176,6 +181,17 @@ export default function Dashboard() {
           )}
         </Card>
       </div>
+
+      <Card title="Recommended for you" subtitle="Hybrid recommender (collaborative + content-based) · unlocked courses only"
+            action={<div className="flex items-center gap-3"><ModelBadge data={recs.data} />
+              <Link to="/recommendations" className="text-sm font-medium text-brand hover:underline">All AI insights</Link></div>}>
+        {recs.loading && !recs.data && <div className="grid gap-3 md:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-28 rounded-xl" />)}</div>}
+        {recs.error && <ErrorState compact error={recs.error} onRetry={recs.reload} />}
+        {recs.data && <RecommendationList items={recs.data.items} onOpen={setOpenId} compact />}
+      </Card>
+
+      <CourseDetailModal courseId={openId} status={openId ? { status: 'available', missing: [] } : null}
+                         onClose={() => setOpenId(null)} onChanged={() => { setOpenId(null); enrollments.reload() }} />
     </div>
   )
 }

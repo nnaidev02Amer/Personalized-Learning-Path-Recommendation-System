@@ -65,6 +65,8 @@ frontend/
 | Progress & Analytics | `/progress?weeks=4..26`, `/quiz-attempts` | Change range, chart ↔ table |
 | Profile | `/students/{id}`, `/meta`, `/enrollments?status=active` | Edit, log study time, create, delete student |
 | Quiz | `/quizzes/{id}` | Submit answers → graded feedback |
+| AI Recommendations (Phase 5) | `/recommendations`, `/skills`, `/adaptive-difficulty`, `/predictions`, `/learning-style`, `/ml/status` | Switch method, open/enrol, chat with the assistant |
+| Model Evaluation (Phase 5) | `/ml/evaluation` | Switch protocol, retrain |
 
 ## What is real vs. not yet connected
 

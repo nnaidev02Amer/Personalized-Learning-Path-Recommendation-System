@@ -217,9 +217,15 @@ try {
 
   // Roadmap + recommendations pages render.
   await goto('/roadmap')
-  step('Roadmap renders course tracks', await waitFor(text('Unlocked next')))
+  step('Roadmap renders tracks and model-ranked next steps', await waitFor(`${text('Next steps')} && ${text('ML ranked')}`, 20000))
   await goto('/recommendations')
-  step('Recommendations page labels AI features as Phase 5', await waitFor(text('AI models are connected in Phase 5')))
+  step('AI page shows model recommendations', await waitFor(`${text('Real model outputs')} && ${text('ML model output')} && document.querySelectorAll('ol li button').length >= 1`, 30000))
+  step('AI page shows BKT, bandit, prediction and style cards',
+    await waitFor(`${text('Skill mastery')} && ${text('Suggested next difficulty')} && ${text('Predicted quiz scores')} && ${text('Model prediction')}`, 20000))
+  await click('What should I learn next?')
+  step('Assistant answers from model outputs', await waitFor(`${text('Top recommended next courses')} || ${text('Answered by')}`, 30000))
+  await goto('/models')
+  step('Model evaluation page shows baseline comparisons', await waitFor(`${text('NDCG Δ vs popularity')} && (${text('No significant difference from')} || ${text('Significantly')})`, 20000))
 
   // Delete the test student via the UI.
   await goto('/profile')

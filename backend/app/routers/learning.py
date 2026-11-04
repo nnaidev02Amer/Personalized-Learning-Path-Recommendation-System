@@ -1,8 +1,9 @@
 """Enrolments, lesson progress and quizzes."""
 
+import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -56,8 +57,12 @@ def get_quiz(quiz_id: int, db: DB):
 
 @router.post("/students/{student_id}/quizzes/{quiz_id}/attempts",
              response_model=schemas.QuizResult, status_code=201)
-def submit_quiz(student_id: int, quiz_id: int, data: schemas.QuizSubmission, db: DB):
+def submit_quiz(student_id: int, quiz_id: int, data: schemas.QuizSubmission, db: DB, request: Request):
     student = services.get_or_404(db, Student, student_id)
     quiz = services.get_or_404(db, Quiz, quiz_id)
     attempt, feedback = services.submit_quiz(db, student, quiz, data)
+    try:   # online update of the adaptive-difficulty bandit; must never fail the submission
+        request.app.state.ml.observe_attempt(db, student_id, attempt.id)
+    except Exception:
+        logging.getLogger("backend.ml").exception("Bandit update failed")
     return dict(**services.attempt_out(attempt), feedback=feedback)

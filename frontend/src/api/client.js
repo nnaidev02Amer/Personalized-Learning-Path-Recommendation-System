@@ -93,6 +93,19 @@ export const api = {
       request(`/enrollments/${id}/lessons/${lessonId}/complete`, { method: 'POST' }),
   },
 
+  ai: {
+    status: () => request('/ml/status'),
+    evaluation: () => request('/ml/evaluation'),
+    retrain: () => request('/ml/retrain', { method: 'POST' }),
+    recommendations: (id, method = 'hybrid', limit = 5) =>
+      request(`/students/${id}/recommendations`, { params: { method, limit } }),
+    learningStyle: (id) => request(`/students/${id}/learning-style`),
+    skills: (id) => request(`/students/${id}/skills`),
+    difficulty: (id) => request(`/students/${id}/adaptive-difficulty`),
+    predictions: (id) => request(`/students/${id}/predictions`),
+    ask: (id, message) => request(`/students/${id}/assistant`, { method: 'POST', body: { message } }),
+  },
+
   quizzes: {
     get: (id) => request(`/quizzes/${id}`),
     submit: (studentId, quizId, data) =>

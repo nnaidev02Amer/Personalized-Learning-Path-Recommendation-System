@@ -21,7 +21,7 @@
 > npm install
 > npm run dev                                         # open http://localhost:5173
 > ```
-> API reference: [docs/API.md](docs/API.md) · Frontend: [docs/FRONTEND.md](docs/FRONTEND.md).
+> API reference: [docs/API.md](docs/API.md) · Frontend: [docs/FRONTEND.md](docs/FRONTEND.md) · AI/ML models and their measured results: [docs/ML_MODELS.md](docs/ML_MODELS.md).
 > **Note on results:** on the original `sample_data.csv` no model beats the
 > majority-class baseline, because the features are statistically independent
 > of the labels (measured; see the analysis doc). The evaluation report says so

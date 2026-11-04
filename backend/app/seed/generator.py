@@ -173,19 +173,10 @@ def seed_student(db: Session, row, courses: list[Course], today: date, random_st
 
     student.enrollments = enrollments
 
-    # Quiz scores: difficulty effect + personal learning trend, then re-centred
-    # so the student's mean equals AverageScore from sample_data.csv.
-    if quiz_plan:
-        trend = rng.normal(0.08, 0.06)    # points per day
-        raw = np.array([rng.normal(0, 6) - 4 * (c.level - 2) + trend * (d - start).days
-                        for c, d in quiz_plan])
-        scores = np.clip(raw - raw.mean() + float(row.AverageScore), 0, 100)
-        for (course, day), score in zip(quiz_plan, scores):
-            minutes = round(float(rng.uniform(6, 18)), 1)
-            student.quiz_attempts.append(QuizAttempt(
-                quiz=course.quizzes[0], score=round(float(score), 1), time_taken_min=minutes,
-                attempted_at=_at(day, rng)))
-            activity.append(ActivityLog(course_id=course.id, activity_date=day, kind="quiz", minutes=minutes))
+    for attempt in simulate_quiz_attempts(rng, quiz_plan, float(row.AverageScore), start, today):
+        student.quiz_attempts.append(attempt)
+        activity.append(ActivityLog(course_id=attempt.quiz.course_id, activity_date=attempt.attempted_at.date(),
+                                    kind="quiz", minutes=attempt.time_taken_min))
 
     # Extra self-study sessions; frequency and length scale with SessionTime.
     intensity = float(row.SessionTime) / 120.0
@@ -196,6 +187,70 @@ def seed_student(db: Session, row, courses: list[Course], today: date, random_st
                                         minutes=round(max(5.0, rng.normal(0.4, 0.1) * float(row.SessionTime)), 1)))
     student.activity = activity
     return student
+
+
+def _sigmoid(x):
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def simulate_quiz_attempts(rng, quiz_plan, average_score: float, start: date, today: date) -> list[QuizAttempt]:
+    """SYNTHETIC per-question quiz answers from a simple learner model.
+
+    P(correct) = sigmoid(ability + skill_strength[skill] - 0.6*(level-2) + trend*day + 0.5*retake)
+      * skill_strength: persistent per-student strengths/weaknesses (N(0, 0.9) per skill)
+      * trend: per-student learning rate over time; retakes get a small boost
+      * ability is solved so the mean P(correct) equals AverageScore/100, and the
+        total number of correct answers is fixed to round(AverageScore% x questions),
+        so each student's mean score matches sample_data.csv up to 50/N points
+        (N = number of questions answered).
+    Correct answers are drawn without replacement, weighted by P(correct).
+    """
+    if not quiz_plan:
+        return []
+    plan = []
+    for course, day in quiz_plan:
+        plan.append((course, day, 0))
+        if rng.random() < 0.35:   # some quizzes are retaken a few days later
+            plan.append((course, min(today, day + timedelta(days=int(rng.integers(1, 6)))), 1))
+    plan.sort(key=lambda p: p[1])
+
+    trend = rng.normal(0.012, 0.008)
+    strength: dict[str, float] = {}
+    items = []   # (attempt index, question, base logit)
+    for i, (course, day, retake) in enumerate(plan):
+        for q in course.quizzes[0].questions:
+            s = strength.setdefault(q.skill, float(rng.normal(0, 0.9)))
+            items.append((i, q, s - 0.6 * (course.level - 2) + trend * (day - start).days + 0.5 * retake))
+    base = np.array([it[2] for it in items])
+    target = average_score / 100.0
+    lo, hi = -15.0, 15.0
+    for _ in range(60):   # bisection for ability
+        mid = (lo + hi) / 2
+        if _sigmoid(base + mid).mean() < target:
+            lo = mid
+        else:
+            hi = mid
+    p = _sigmoid(base + (lo + hi) / 2)
+    k = int(round(target * len(items)))
+    chosen = set(rng.choice(len(items), size=k, replace=False, p=p / p.sum()).tolist()) if k else set()
+
+    attempts = []
+    for i, (course, day, _retake) in enumerate(plan):
+        quiz = course.quizzes[0]
+        answers, correct = [], 0
+        for idx, q in ((n, it[1]) for n, it in enumerate(items) if it[0] == i):
+            if idx in chosen:
+                answers.append(q.correct_option)
+                correct += 1
+            else:
+                wrong = [o for o in range(len(q.options)) if o != q.correct_option]
+                answers.append(int(rng.choice(wrong)))
+        total = len(quiz.questions)
+        attempts.append(QuizAttempt(quiz=quiz, score=round(100 * correct / total, 1), correct=correct,
+                                    total=total, answers=answers,
+                                    time_taken_min=round(float(rng.uniform(6, 18)), 1),
+                                    attempted_at=_at(day, rng)))
+    return attempts
 
 
 def seed_database(db: Session, *, random_state: int = 42, today: date | None = None,

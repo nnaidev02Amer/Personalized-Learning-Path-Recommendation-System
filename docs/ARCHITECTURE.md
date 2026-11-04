@@ -12,12 +12,16 @@
 │   ├── adaptive_level.py   # percentile learning-level policy         [Phase 2]
 │   ├── evaluation.py       # baseline-aware evaluation report         [Phase 2]
 │   ├── cli.py              # `python -m ml <command>`                 [Phase 2]
-│   ├── recommenders/       # content-based, collaborative, hybrid     [Phase 5]
-│   ├── performance.py      # quiz-score / pass prediction             [Phase 5]
-│   ├── knowledge.py        # Bayesian Knowledge Tracing, skill gaps   [Phase 5]
-│   ├── rl/                 # Q-learning + LinUCB difficulty policy    [Phase 5]
-│   └── roadmap.py          # prerequisite-aware path generation       [Phase 5]
+│   ├── recsys.py           # content-based, item-kNN, hybrid, popularity [Phase 5]
+│   ├── knowledge_tracing.py# Bayesian Knowledge Tracing                [Phase 5]
+│   ├── bandit.py           # LinUCB adaptive difficulty               [Phase 5]
+│   ├── performance.py      # quiz-score prediction (gradient boosting) [Phase 5]
+│   ├── style_model.py      # learning style from behaviour            [Phase 5]
+│   ├── learner_state.py    # point-in-time learner features           [Phase 5]
+│   └── stats.py            # paired bootstrap CIs                     [Phase 5]
 ├── backend/app/            # FastAPI + SQLAlchemy (SQLite)            [Phase 3]
+│   ├── ml_service.py       # DB → ml/ models, evaluation, serving       [Phase 5]
+│   └── assistant.py        # grounded assistant, optional Claude API   [Phase 5]
 ├── frontend/               # React + Vite + Tailwind + Recharts       [Phase 4] (see FRONTEND.md)
 ├── tests/                  # pytest suite
 ├── docs/                   # analysis, architecture, changelog

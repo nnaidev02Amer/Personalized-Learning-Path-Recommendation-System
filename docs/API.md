@@ -53,6 +53,22 @@ All errors use one shape:
 | POST | `/api/enrollments/{id}/lessons/{lesson_id}/complete` | Mark lesson done (idempotent), logs activity, auto-completes the course after the last lesson |
 | POST | `/api/students/{id}/quizzes/{quiz_id}/attempts` | Submit `answers: [option index…]`, `time_taken_min?`. Server grades and returns score + per-question feedback → 201 |
 
+## AI / ML (Phase 5)
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/ml/status` | Trained?, training time, training-data provenance, assistant provider |
+| GET | `/api/ml/evaluation` | Full evaluation report (all models vs baselines, bootstrap CIs) |
+| POST | `/api/ml/retrain` | Retrain every model on the current database |
+| GET | `/api/students/{id}/recommendations?method=hybrid|content|collaborative|popularity&limit=5` | Ranked unlocked courses with reasons and component scores |
+| GET | `/api/students/{id}/skills` | BKT mastery per skill, gaps, untested skills, topic means |
+| GET | `/api/students/{id}/adaptive-difficulty` | LinUCB suggestion + expected success per level |
+| GET | `/api/students/{id}/predictions` | Predicted quiz score (± model MAE) per enrolled course |
+| GET | `/api/students/{id}/learning-style` | Predicted style, probabilities, `reliable` flag and advice |
+| POST | `/api/students/{id}/assistant` | `{message}` → grounded answer (`source`: `rules` or `claude`) |
+
+Every model response includes `model_output: true`, `trained_at`, `student_history`
+(`synthetic (seeded)` / `real`) and the model's evaluation. See `docs/ML_MODELS.md`.
+
 ## Database tables
 
 ```
@@ -80,9 +96,10 @@ students ─┬─< enrollments >── courses ─┬─< lessons
 * **From `sample_data.csv`:** the 100 student profiles (id, age, learning style, preferred
   content, daily study minutes). Names/e-mails are generated placeholders (`@example.edu`).
 * **Synthetic (seeded, `is_synthetic = true`):** enrolments, lesson completions, quiz attempts,
-  ratings and activity for the last 12 weeks, constrained to match each original row. Measured
-  on the seeded DB: completed courses = `CompletedCourses` for 100 % of students; mean quiz
-  score within 0.18 points of `AverageScore` on average; active-course lesson progress
-  correlates 0.94 with `Progress`; daily minutes correlate 0.36 with `SessionTime`.
+  ratings, per-question quiz answers (incl. ~35 % retakes) and activity for the last 12 weeks,
+  constrained to match each original row. Measured on the seeded DB: completed courses =
+  `CompletedCourses` for 100 % of students; mean quiz score within 1.3 points of `AverageScore`
+  on average (bound 50/N for N answered questions); active-course lesson progress correlates
+  0.94 with `Progress`; daily minutes correlate 0.35 with `SessionTime`.
 * The history is anchored to the date of seeding. Re-run `python -m backend.app.seed --reset`
   to refresh it later.

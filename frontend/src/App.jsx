@@ -15,6 +15,7 @@ const Recommendations = lazy(() => import('./pages/Recommendations'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Quiz = lazy(() => import('./pages/Quiz'))
+const ModelEvaluation = lazy(() => import('./pages/ModelEvaluation'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 const page = (Component) => (
@@ -37,6 +38,7 @@ export default function App() {
                 <Route path="analytics" element={page(Analytics)} />
                 <Route path="profile" element={page(Profile)} />
                 <Route path="quiz/:quizId" element={page(Quiz)} />
+                <Route path="models" element={page(ModelEvaluation)} />
                 <Route path="*" element={page(NotFound)} />
               </Route>
             </Routes>
