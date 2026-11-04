@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from conftest import new_student
+from ml_helpers import new_student
 from ml import config
 from ml.preprocessing import DataPreprocessing
 from ml.schema import ValidationError, validate_students

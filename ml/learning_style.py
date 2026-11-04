@@ -166,7 +166,7 @@ class LearningStyleClassification:
         joblib.dump(self.label_encoder, out / "label_encoder.pkl")
 
         report = {**self.metrics, "segmentation": self.cluster_report}
-        (config.reports_dir() / METRICS_FILE).write_text(json.dumps(report, indent=2, default=_json))
+        (config.reports_dir() / METRICS_FILE).write_text(json.dumps(report, indent=2, default=_json), encoding="utf-8")
 
     def load_models(self) -> "LearningStyleClassification":
         out = config.models_dir()

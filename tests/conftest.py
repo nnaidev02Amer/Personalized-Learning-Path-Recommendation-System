@@ -1,11 +1,5 @@
-import sys
-from pathlib import Path
-
 import pandas as pd
 import pytest
-
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
 
 
 @pytest.fixture
@@ -34,9 +28,3 @@ def trained(clean_data):
     adaptive_level.run()
     return clean_data
 
-
-def new_student(**overrides):
-    row = {"Age": 22, "Progress": 0.5, "CompletedCourses": 3, "AverageScore": 75.0,
-           "PreferredContent": "Videos", "SessionTime": 60.0, "LearningStyle": "Visual"}
-    row.update(overrides)
-    return pd.DataFrame([row])

@@ -49,7 +49,7 @@ class ModelEvaluation:
 
     def evaluate_classification(self) -> dict:
         model = joblib.load(config.models_dir() / PIPELINE_FILE)
-        saved = json.loads((config.reports_dir() / METRICS_FILE).read_text())
+        saved = json.loads((config.reports_dir() / METRICS_FILE).read_text(encoding="utf-8"))
         test_ids = set(saved["test_student_ids"])
 
         is_test = self.data["StudentID"].isin(test_ids)
@@ -154,5 +154,5 @@ class ModelEvaluation:
                        "LearningStyle (see docs/PHASE1_ANALYSIS.md); no model can be "
                        "expected to beat the baseline on it.",
         }
-        (config.reports_dir() / REPORT_FILE).write_text(json.dumps(self.report, indent=2))
+        (config.reports_dir() / REPORT_FILE).write_text(json.dumps(self.report, indent=2), encoding="utf-8")
         return self.report

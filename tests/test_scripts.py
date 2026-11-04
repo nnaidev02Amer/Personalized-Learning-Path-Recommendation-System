@@ -10,7 +10,7 @@ import sys
 
 import pytest
 
-from conftest import ROOT
+from ml_helpers import ROOT
 from ml.cli import main
 
 SCRIPTS = ["Data-Preprocessing.py", "Learning-Style-Classification.py",

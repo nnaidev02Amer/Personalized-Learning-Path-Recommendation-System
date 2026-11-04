@@ -12,7 +12,12 @@
 > pip install -r requirements-dev.txt
 > python -m ml all                   # or run the 5 root scripts in order
 > python -m pytest                   # run the test suite
+>
+> # Backend API (creates + seeds data/app.db on first start)
+> python -m uvicorn backend.app.main:app --reload
+> # then open http://127.0.0.1:8000/docs
 > ```
+> API reference: [docs/API.md](docs/API.md).
 > **Note on results:** on the original `sample_data.csv` no model beats the
 > majority-class baseline, because the features are statistically independent
 > of the labels (measured; see the analysis doc). The evaluation report says so

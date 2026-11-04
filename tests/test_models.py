@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pytest
 
-from conftest import new_student
+from ml_helpers import new_student
 from ml import config
 from ml.adaptive_level import AdaptiveLearningSystem
 from ml.evaluation import ModelEvaluation

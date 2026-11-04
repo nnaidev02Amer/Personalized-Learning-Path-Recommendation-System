@@ -12,14 +12,13 @@
 │   ├── adaptive_level.py   # percentile learning-level policy         [Phase 2]
 │   ├── evaluation.py       # baseline-aware evaluation report         [Phase 2]
 │   ├── cli.py              # `python -m ml <command>`                 [Phase 2]
-│   ├── synthetic/          # seeded synthetic data generator          [Phase 3]
-│   ├── recommenders/       # content-based, collaborative, hybrid     [Phase 3]
-│   ├── performance.py      # quiz-score / pass prediction             [Phase 3]
-│   ├── knowledge.py        # Bayesian Knowledge Tracing, skill gaps   [Phase 3]
-│   ├── rl/                 # Q-learning + LinUCB difficulty policy    [Phase 3]
-│   └── roadmap.py          # prerequisite-aware path generation       [Phase 3]
-├── backend/                # FastAPI + SQLAlchemy (SQLite)            [Phase 4]
-├── frontend/               # React + Vite + Tailwind + Recharts       [Phase 5]
+│   ├── recommenders/       # content-based, collaborative, hybrid     [Phase 5]
+│   ├── performance.py      # quiz-score / pass prediction             [Phase 5]
+│   ├── knowledge.py        # Bayesian Knowledge Tracing, skill gaps   [Phase 5]
+│   ├── rl/                 # Q-learning + LinUCB difficulty policy    [Phase 5]
+│   └── roadmap.py          # prerequisite-aware path generation       [Phase 5]
+├── backend/app/            # FastAPI + SQLAlchemy (SQLite)            [Phase 3]
+├── frontend/               # React + Vite + Tailwind + Recharts       [Phase 4]
 ├── tests/                  # pytest suite
 ├── docs/                   # analysis, architecture, changelog
 ├── data/                   # generated data (git-ignored)
