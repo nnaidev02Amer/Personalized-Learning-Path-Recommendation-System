@@ -18,7 +18,7 @@
 │   ├── rl/                 # Q-learning + LinUCB difficulty policy    [Phase 5]
 │   └── roadmap.py          # prerequisite-aware path generation       [Phase 5]
 ├── backend/app/            # FastAPI + SQLAlchemy (SQLite)            [Phase 3]
-├── frontend/               # React + Vite + Tailwind + Recharts       [Phase 4]
+├── frontend/               # React + Vite + Tailwind + Recharts       [Phase 4] (see FRONTEND.md)
 ├── tests/                  # pytest suite
 ├── docs/                   # analysis, architecture, changelog
 ├── data/                   # generated data (git-ignored)

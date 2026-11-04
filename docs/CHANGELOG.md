@@ -1,0 +1,83 @@
+# Changelog
+
+## Phase 4 – Frontend (React + Vite + Tailwind + Recharts)
+
+### Added
+* `frontend/`: React 19 SPA with sidebar navigation (drawer on mobile), student
+  switcher, API status indicator, light/dark theme, toasts, lazy-loaded pages.
+* Pages: Dashboard, My Learning, Course Catalog, Learning Roadmap, AI
+  Recommendations, Progress & Analytics, Profile, Quiz, 404 – all backed by the
+  Phase 3 API; loading / error / empty states throughout.
+* Working actions: create/edit/delete student, log study time, enrol (with
+  prerequisite messages), complete lessons, pause/resume, rate, take graded quizzes.
+* Charts (weekly study time, quiz score timeline, scores by topic) with tooltips
+  and table view; validated palette per theme.
+* `npm run e2e`: headless-browser smoke test (18 checks) using Edge/Chrome via
+  the DevTools protocol – no extra packages.
+* `docs/FRONTEND.md`, `frontend/.env.example`.
+
+### Fixed during verification
+* `useEffect(() => window.scrollTo(...))` returned a Promise in current
+  Chromium and crashed React ("destroy is not a function").
+* Weekly chart axis rounded 150 min to "3h"; it now plots hours.
+* Clipped "100%" axis label; roadmap tracks clipped at the right edge.
+* This changelog had been emptied by a failed (cp1252) write during Phase 3 and
+  committed empty; restored from version history.
+
+## Phase 3 – Backend (FastAPI + SQLite)
+
+Development order changed at the user's request: application first
+(backend → frontend → ML integration), ML improvements afterwards.
+
+### Added
+* `backend/app/`: FastAPI app factory, settings from env/`.env`, SQLAlchemy 2.0
+  models (10 tables), Pydantic v2 schemas, service layer, 4 routers, 21 endpoints.
+* Business rules: prerequisite enforcement, idempotent lesson completion with
+  automatic course completion, server-side quiz grading with per-question
+  feedback (answer keys never exposed), rating only after completion,
+  drop/re-enrol.
+* Analytics endpoints: dashboard summary, weekly activity, score trend,
+  scores by topic, streaks.
+* Consistent JSON error format; validation (422), conflicts (409), 404s,
+  no stack traces leaked on 500.
+* Seed data: hand-written catalogue (24 courses / 120 lessons / 96 questions)
+  + the 100 `sample_data.csv` students + seeded synthetic 12-week history,
+  verified to match the original rows. `python -m backend.app.seed --reset`.
+* `.env.example`, `docs/API.md`, 30 API tests (56 tests in total).
+
+## Phase 2 – Fix existing functionality, prepare ML architecture
+
+**Baseline protected:** all pre-existing local edits, processed data and model
+pickles committed on branch `upgrade/v2` and tagged `baseline-local-2026-11-04`.
+
+### Fixed
+* Learning-style classifier: scaling inside a Pipeline fitted on train rows
+  only (removes leakage and double scaling); Decision Tree depth tuned by CV;
+  results reported next to majority/chance baselines; held-out IDs persisted.
+* K-Means: k chosen by silhouette score; cluster profiles saved, not discarded.
+* `load_models()` restored; `classify_new_student` works after a restart and
+  also returns class probabilities and the student's segment.
+* Peer recommender: no longer returns the student as its own match; returns
+  exactly *n* results; values in original units; similarity score per peer;
+  similarity-weighted content-format suggestion.
+* Adaptive model: replaced the leaky RandomForest (which re-learned its own
+  label formula at 0.77 CV accuracy) with the explicit percentile rule, fixed
+  the single-student bug (always "Advanced"), added the reasoning to the output.
+* Preprocessing: `StudentID` stays an integer; fitted imputers/scaler re-usable
+  via `transform()`; a clean, unscaled CSV is produced for model training.
+* Evaluation: uses the saved held-out set; evaluates all three components with
+  baselines; leakage-free check for the peer recommender; writes JSON report.
+* Scripts run from any directory; clear error messages instead of tracebacks.
+
+### Added
+* `ml/` package (`config`, `schema`, `preprocessing`, `learning_style`,
+  `peer_recommender`, `adaptive_level`, `evaluation`, `cli`).
+* Input validation (`ml/schema.py`) for ranges, categories, types, IDs.
+* `requirements.txt` (pinned, no TensorFlow) and `requirements-dev.txt`.
+* `pytest` suite (26 tests) including leakage and backward-compatibility tests.
+* `.gitignore`; generated `data/processed`, `models/*`, `reports/` untracked.
+
+### Unchanged
+* `sample_data.csv` (a test asserts its SHA-256 matches upstream).
+* The five root script names, their commands, their class names and the
+  original model file names.
