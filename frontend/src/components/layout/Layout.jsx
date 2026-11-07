@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Menu, Moon, Sun } from 'lucide-react'
 import { api } from '../../api/client'
+import { useAuth } from '../../context/AuthContext'
 import { useStudent } from '../../context/StudentContext'
 import { useTheme } from '../../context/ThemeContext'
 import { ErrorState, PageSkeleton, EmptyState } from '../ui/States'
 import Sidebar from './Sidebar'
-import StudentSwitcher from './StudentSwitcher'
+import UserMenu from './UserMenu'
 
 function ApiStatus() {
   const [ok, setOk] = useState(null)
@@ -30,6 +31,7 @@ export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const { theme, toggle } = useTheme()
   const { student, loading, error, reload } = useStudent()
+  const { isAdmin } = useAuth()
   const location = useLocation()
 
   // Block body: in current Chromium, scrollTo() returns a Promise, which must not be returned from an effect.
@@ -37,11 +39,14 @@ export default function Layout() {
     window.scrollTo(0, 0)
   }, [location.pathname])
 
+  // Administration pages never load a student; student pages show the signed-in student's own data.
   let content = <Outlet />
-  if (loading && !student) content = <PageSkeleton />
-  else if (error && !student) content = <ErrorState error={error} onRetry={reload} />
-  else if (!student && location.pathname !== '/profile') {
-    content = <EmptyState title="No students yet" message="Create a student profile on the Profile page to get started." />
+  if (!isAdmin) {
+    if (loading && !student) content = <PageSkeleton />
+    else if (error && !student) content = <ErrorState error={error} onRetry={reload} />
+    else if (!student) {
+      content = <EmptyState title="No learner profile" message="Your account is not linked to a student profile. Ask an administrator." />
+    }
   }
 
   return (
@@ -58,7 +63,7 @@ export default function Layout() {
                     aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
               {theme === 'dark' ? <Sun className="size-5" /> : <Moon className="size-5" />}
             </button>
-            <StudentSwitcher />
+            <UserMenu />
           </div>
         </header>
         <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:py-8">{content}</main>

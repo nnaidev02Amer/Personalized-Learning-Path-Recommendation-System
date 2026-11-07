@@ -91,6 +91,8 @@ class CourseSummary(CourseRef):
     prerequisite_codes: list[str]
     enrolled_count: int = 0
     average_rating: float | None = None
+    is_active: bool = True
+    is_locked: bool = True
 
 
 class LessonOut(ORM):
@@ -166,6 +168,32 @@ class QuizResult(QuizAttemptOut):
 class EnrollmentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     course_id: int = Field(gt=0)
+
+
+RequestStatus = Literal["pending", "approved", "rejected", "cancelled"]
+
+
+class EnrollmentRequestCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    course_id: int = Field(gt=0)
+
+
+class RequestDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str | None = Field(default=None, max_length=500)
+
+
+class EnrollmentRequestOut(BaseModel):
+    """One enrolment request; ``student_name``/``student_email`` are filled in for administrators."""
+    id: int
+    student_id: int
+    student_name: str
+    student_email: str
+    course: "CourseRef"
+    status: RequestStatus
+    note: str | None
+    requested_at: datetime
+    decided_at: datetime | None
 
 
 class EnrollmentUpdate(BaseModel):

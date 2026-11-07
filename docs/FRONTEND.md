@@ -75,7 +75,9 @@ Every number and list comes from the API — there is no hard-coded dashboard da
 The **Roadmap** is computed from prerequisites and the student's enrolments (not AI),
 and the **AI Recommendations** page states that model output arrives in Phase 5; the
 sections it shows now are explicitly labelled *rule-based* or *descriptive statistics*.
-There is no login yet: the top-bar switcher selects which student is viewed.
+Sign-in is required (`/login`, optional `/register`). A student always sees their own data; an administrator
+sees only the *Administration* menu (no student pages, no student switcher); route guards redirect each role away
+from the other's URLs (see `docs/AUTHENTICATION.md`).
 
 ## Design notes
 * Light/dark themes from CSS tokens (`src/index.css`); toggle persists in `localStorage`.

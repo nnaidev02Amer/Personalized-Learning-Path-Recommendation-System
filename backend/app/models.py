@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (JSON, Boolean, CheckConstraint, Column, Date, DateTime, Float,
-                        ForeignKey, Integer, String, Table, Text, UniqueConstraint)
+                        ForeignKey, Index, Integer, String, Table, Text, UniqueConstraint)
+from sqlalchemy import text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.database import Base
@@ -59,6 +60,10 @@ class Course(Base):
     content_format: Mapped[str] = mapped_column(String(30))  # Videos / Articles / Podcasts / Quizzes
     duration_hours: Mapped[float] = mapped_column(Float)
     skills: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Archived courses disappear from the student catalogue but keep every enrolment and attempt.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    # Locked courses need an administrator's approval (enrolment request); unlocked ones can be joined directly.
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
 
     prerequisites: Mapped[list[Course]] = relationship(
         secondary=course_prerequisites,
@@ -185,3 +190,82 @@ class ActivityLog(Base):
     kind: Mapped[str] = mapped_column(String(20))   # lesson / quiz / study
 
     student: Mapped[Student] = relationship(back_populates="activity")
+
+
+class User(Base):
+    """A login account. ``student_id`` links a student account to its (single) learner profile."""
+
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("role IN ('admin', 'student')", name="user_role"),
+        # Exactly one administrator can ever exist: a partial unique index over the admin rows only.
+        Index("uq_single_admin", "role", unique=True, sqlite_where=text("role = 'admin'")),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20), default="student")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    # One login per learner profile; deleting the student deletes the login with it.
+    student_id: Mapped[int | None] = mapped_column(
+        ForeignKey("students.id", ondelete="CASCADE"), unique=True)
+    failed_logins: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    student: Mapped[Student | None] = relationship()
+    sessions: Mapped[list[AuthSession]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class AuthSession(Base):
+    """A server-side session. Only the SHA-256 of the cookie token is stored."""
+
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    csrf_token: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class RecommendationHistory(Base):
+    """What the recommender showed a student (a new row only when the list changed)."""
+
+    __tablename__ = "recommendation_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), index=True)
+    course_id: Mapped[int | None] = mapped_column(ForeignKey("courses.id", ondelete="SET NULL"))
+    method: Mapped[str] = mapped_column(String(30))
+    items: Mapped[list] = mapped_column(JSON)
+    model_trained_at: Mapped[str | None] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class EnrollmentRequest(Base):
+    """A student's request to join a course. Only an approval creates the real :class:`Enrollment`,
+    so pending/rejected requests never reach the learning data or the ML models."""
+
+    __tablename__ = "enrollment_requests"
+    __table_args__ = (CheckConstraint("status IN ('pending', 'approved', 'rejected', 'cancelled')",
+                                      name="request_status"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), index=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    note: Mapped[str | None] = mapped_column(String(500))          # admin's reason when rejecting
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
+    decided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    student: Mapped[Student] = relationship(lazy="joined")
+    course: Mapped[Course] = relationship(lazy="joined")

@@ -4,43 +4,31 @@
 // Usage (backend on :8000 and frontend on :5173 or :4173 must be running):
 //   npm run e2e                        # default http://127.0.0.1:5173
 //   $env:E2E_URL="http://127.0.0.1:4173"; npm run e2e
+// Sign in as an administrator: E2E_EMAIL / E2E_PASSWORD (use a DISPOSABLE database - this test writes data).
 // The test creates its own student and deletes it at the end.
 
-import { DIALOG, launch, reporter, sleep, text } from './lib/browser.mjs'
+import { DIALOG, approveRequests, createStudentAccount, launch, removeStudent, reporter, sleep, text } from './lib/browser.mjs'
 
 const BASE = (process.env.E2E_URL || 'http://127.0.0.1:5173').replace(/\/$/, '')
 const { step, finish } = reporter()
 const b = await launch({ base: BASE })
 const { goto, click, fill, waitFor, evaluate, api } = b
+const { E2E_EMAIL, E2E_PASSWORD } = process.env
+if (!E2E_EMAIL || !E2E_PASSWORD) throw new Error('Set E2E_EMAIL and E2E_PASSWORD (an administrator of a disposable database)')
 
 let createdId = null
-const email = `e2e.${Date.now()}@example.edu`
 try {
   const health = await api('/health').catch(() => null)
   step('Backend reachable through the frontend proxy', health?.status === 'ok')
   if (!health) throw new Error(`API not reachable at ${BASE}/api — start the backend first`)
 
+  // The administrator creates a disposable student account; the test then signs in as that student.
+  const account = await createStudentAccount(BASE, E2E_EMAIL, E2E_PASSWORD)
+  createdId = account.studentId
+  await b.login(account.email, account.password)
   await goto('/')
-  step('Dashboard loads with a student', await waitFor(text('Courses completed')))
-
-  // Create a student through the Profile page form.
-  await goto('/profile')
-  await waitFor(text('New student'))
-  await click('New student')
-  await waitFor(text('Create a new student'))
-  await click('Create student', DIALOG)
-  step('Create form shows validation errors for empty fields', await waitFor(text('Name is required')))
-  await fill('Full name', 'E2E Test Learner', DIALOG)
-  await fill('Email', email, DIALOG)
-  await fill('Age', 23, DIALOG)
-  await fill('Learning style', 'Visual', DIALOG)
-  await fill('Preferred content format', 'Videos', DIALOG)
-  await click('Create student', DIALOG)
-  step('New student created and selected', await waitFor(text('Now viewing E2E Test Learner'), 10000))
-  createdId = (await api(`/students?search=${encodeURIComponent(email)}`)).items[0]?.id
-  // Safety: never modify seeded students. Stop unless the new student is the one selected.
-  const selected = await waitFor(`document.querySelector('[aria-haspopup=listbox]')?.innerText.includes('Student #${createdId}')`)
-  if (!createdId || !selected) throw new Error('Test student was not created/selected; aborting before any changes')
+  step('Student signs in and lands on their own dashboard', await waitFor(text('Courses completed')))
+  step('Signed in as the new test student', (await api('/auth/me')).user.student_id === createdId)
 
   // Catalog: locked course explains prerequisites; available course can be enrolled.
   await goto('/courses')
@@ -52,8 +40,10 @@ try {
   await click('Python Fundamentals')
   await waitFor(DIALOG)
   await waitFor(text('Lessons (5)'))
-  await click('Enroll', DIALOG)
-  step('Enroll button enrolls the student', await waitFor(text('You are now enrolled in Python Fundamentals')))
+  await click('Request access', DIALOG)
+  step('Request access sends a request for approval', await waitFor(text('Request sent')))
+  step('Student is not enrolled before approval', (await api(`/students/${createdId}/enrollments`)).length === 0)
+  step('Administrator approves the request', (await approveRequests(BASE, E2E_EMAIL, E2E_PASSWORD, createdId)) === 1)
 
   // My Learning: complete all lessons.
   await goto('/learning')
@@ -78,7 +68,7 @@ try {
   step('Quiz is graded by the server (4/4 correct)', await waitFor(text('4 of 4 correct'), 8000))
 
   // Dashboard and analytics reflect the new activity.
-  await goto('/')
+  await goto('/dashboard')
   await waitFor(text('Courses completed'))
   step('Dashboard shows the quiz result', await waitFor(text('Passed · 100%')))
   await goto('/analytics')
@@ -90,7 +80,7 @@ try {
   await fill('Email', 'not-an-email')
   await click('Save changes')
   step('Invalid email is rejected in the form', await waitFor(text('Enter a valid email address')))
-  await fill('Email', email)
+  await fill('Email', account.email)
   await fill('Full name', 'E2E Renamed Learner')
   await click('Save changes')
   step('Profile changes are saved', await waitFor(text('Profile saved')) && (await api(`/students/${createdId}`)).name === 'E2E Renamed Learner')
@@ -108,23 +98,24 @@ try {
     await waitFor(`${text('Skill mastery')} && ${text('Suggested next difficulty')} && ${text('Predicted quiz scores')} && ${text('Model prediction')}`, 20000))
   await click('What should I learn next?')
   step('Assistant answers from model outputs', await waitFor(`${text('Top recommended next courses')} || ${text('Answered by')}`, 30000))
+  await b.logout()
+  await b.login(E2E_EMAIL, E2E_PASSWORD)
   await goto('/models')
-  step('Model evaluation page shows baseline comparisons', await waitFor(`${text('NDCG Δ vs popularity')} && (${text('No significant difference from')} || ${text('Significantly')})`, 20000))
+  step('Model evaluation page shows baseline comparisons (administrator)', await waitFor(`${text('NDCG Δ vs popularity')} && (${text('No significant difference from')} || ${text('Significantly')})`, 20000))
 
-  // Delete the test student via the UI.
-  await goto('/profile')
-  await waitFor(text('Delete student'))
-  await click('Delete student')
-  await waitFor(text('Delete permanently'))
-  await click('Delete permanently')
-  const gone = await waitFor(text('Student deleted'))
-  const check = await fetch(`${BASE}/api/students/${createdId}`)
-  step('Delete removes the student', gone && check.status === 404)
-  if (check.status === 404) createdId = null
+  // A student cannot delete anyone; the administrator removes the test student.
+  const asStudent = await fetch(`${BASE}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: account.email, password: account.password }) })
+  const studentCookie = asStudent.headers.get('set-cookie').split(';')[0]
+  const denied = await fetch(`${BASE}/api/students/${createdId}`, { method: 'DELETE',
+    headers: { Cookie: studentCookie, 'X-CSRF-Token': (await asStudent.json()).csrf_token } })
+  step('Student cannot delete their own record (403)', denied.status === 403)
+  step('Administrator deletes the test student (204)', (await removeStudent(BASE, E2E_EMAIL, E2E_PASSWORD, createdId)) === 204)
+  createdId = null
 } catch (e) {
   step(`Unexpected error: ${e.message}`, false)
 } finally {
-  if (createdId) await api(`/students/${createdId}`, { method: 'DELETE' }).catch(() => {})
+  if (createdId) await removeStudent(BASE, E2E_EMAIL, E2E_PASSWORD, createdId).catch(() => {})
   step('No uncaught errors in the browser console', b.consoleErrors.length === 0, b.consoleErrors.slice(0, 3).join(' | '))
   await b.close()
   process.exit(finish())

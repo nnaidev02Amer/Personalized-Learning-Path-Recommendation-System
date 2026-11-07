@@ -1,69 +1,50 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
+import { useAuth } from './AuthContext'
 
 const StudentContext = createContext(null)
-const STORAGE_KEY = 'currentStudentId'
-
-function savedId() {
-  try {
-    const id = Number(localStorage.getItem(STORAGE_KEY))
-    return Number.isInteger(id) && id > 0 ? id : null
-  } catch {
-    return null
-  }
-}
-
 /**
- * Holds the student whose dashboard is being viewed (there is no login yet;
- * the switcher in the top bar picks the student). `version` increases after
- * any mutation so pages can refetch dependent data.
+ * Holds the student whose data the pages show.
+ *  - A signed-in STUDENT always sees their own profile (the id comes from the session, never from the browser).
+ *  - An ADMINISTRATOR has no student context: they use the administration pages only.
+ * `version` increases after any mutation so pages can refetch dependent data.
  */
 export function StudentProvider({ children }) {
-  const [studentId, setStudentIdState] = useState(savedId)
+  const { user, isStudent } = useAuth()
+  const studentId = isStudent ? user.student_id : null     // always the session's own student, never a browser value
   const [student, setStudent] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [version, setVersion] = useState(0)
 
-  const setStudentId = useCallback((id) => {
-    setStudentIdState(id)
-    try {
-      localStorage.setItem(STORAGE_KEY, String(id))
-    } catch {
-      // storage unavailable
-    }
-  }, [])
+  const setStudentId = useCallback(() => {}, [])         // kept for existing callers; the student is fixed by the session
 
   const load = useCallback(async () => {
+    if (!isStudent || !studentId) {                          // signed out, or an administrator: no student data at all
+      setStudent(null)
+      setError(null)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
+    setStudent((s) => (s && s.id === studentId ? s : null))      // never show the previous user's profile
     try {
-      if (studentId) {
-        try {
-          setStudent(await api.students.get(studentId))
-          return
-        } catch (e) {
-          if (e.status !== 404) throw e
-        }
-      }
-      // No saved student (or it was deleted): fall back to the first one.
-      const first = await api.students.list({ limit: 1 })
-      if (first.items.length) {
-        setStudentId(first.items[0].id)
-        setStudent(first.items[0])
-      } else {
-        setStudent(null)
-      }
+      setStudent(await api.students.get(studentId))
     } catch (e) {
       setError(e)
     } finally {
       setLoading(false)
     }
-  }, [studentId, setStudentId])
+  }, [studentId, isStudent])
 
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {                                           // another account (or none): forget the previous one
+    setVersion(0)
+  }, [user?.id])
 
   const refresh = useCallback(() => {
     setVersion((v) => v + 1)

@@ -37,6 +37,27 @@ class Settings:
     # Train the ML models in a background thread at startup (otherwise on first ML request).
     ml_train_on_startup: bool = field(default_factory=lambda: _bool("ML_TRAIN_ON_STARTUP", True))
 
+    # ---- authentication (see docs/AUTHENTICATION.md)
+    environment: str = field(default_factory=lambda: os.environ.get("APP_ENV", "development").strip().lower())
+    # Students can register themselves (an administrator can never be created this way). Set false to close sign-up.
+    allow_self_registration: bool = field(default_factory=lambda: _bool("ALLOW_SELF_REGISTRATION", True))
+    session_ttl_hours: float = field(default_factory=lambda: float(os.environ.get("SESSION_TTL_HOURS", "8")))
+    # None = decide from APP_ENV (Secure cookies in production, so local http://localhost keeps working).
+    cookie_secure_override: bool | None = field(default_factory=lambda: (
+        _bool("COOKIE_SECURE", False) if os.environ.get("COOKIE_SECURE") not in (None, "") else None))
+    max_failed_logins: int = field(default_factory=lambda: int(os.environ.get("MAX_FAILED_LOGINS", "5")))
+    lockout_minutes: float = field(default_factory=lambda: float(os.environ.get("LOCKOUT_MINUTES", "15")))
+    @property
+    def is_production(self) -> bool:
+        return self.environment in {"production", "prod"}
+
+    @property
+    def cookie_secure(self) -> bool:
+        return self.is_production if self.cookie_secure_override is None else self.cookie_secure_override
+
 
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    if "*" in settings.cors_origins:
+        raise ValueError("CORS_ORIGINS must list explicit origins: '*' cannot be combined with cookie sessions")
+    return settings

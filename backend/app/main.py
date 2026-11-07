@@ -21,8 +21,9 @@ from backend.app.config import Settings, get_settings
 from backend.app.database import Database
 from backend.app.errors import InsufficientData, install_error_handlers
 from backend.app.ml_service import MLService
+from backend.app.security import RateLimiter
 from backend.app.models import Course
-from backend.app.routers import courses, learning, meta, students
+from backend.app.routers import admin, auth as auth_router, courses, learning, meta, students
 from backend.app.routers import ml as ml_router
 
 log = logging.getLogger("backend")
@@ -65,10 +66,25 @@ def create_app(settings: Settings | None = None, ml_service: MLService | None = 
     app.state.database = database
     app.state.settings = settings
     app.state.ml = ml_service
-    app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
-                       allow_methods=["*"], allow_headers=["*"])
+    app.state.limiter = RateLimiter()
+
+    @app.middleware("http")
+    async def security_headers(request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        if request.url.path.startswith("/api/"):
+            response.headers.setdefault("Cache-Control", "no-store")   # never cache per-user API data
+        return response
+
+    # Explicit origins + credentials (cookie sessions). Never "*".
+    app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=True,
+                       allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+                       allow_headers=["Content-Type", "X-CSRF-Token"])
     install_error_handlers(app)
-    for router in (meta.router, students.router, courses.router, learning.router, ml_router.router):
+    for router in (meta.router, auth_router.router, students.router, courses.router, learning.router,
+                   ml_router.router, admin.router):
         app.include_router(router)
     return app
 

@@ -19,7 +19,7 @@ import pandas as pd
 from ml.knowledge_tracing import BKTModel
 
 FEATURES = ["prior_attempts", "prior_mean", "prior_last", "prior_trend", "topic_prior_mean", "level",
-            "format_match", "quiz_skill_mastery", "overall_mastery", "is_retake"]
+            "format_match", "quiz_skill_mastery", "overall_mastery", "is_retake", "prior_answers", "prior_correct"]
 CONTEXT_NAMES = ["bias", "prior_mean", "overall_mastery", "experience", "recent_trend"]
 TARGET_ZONE = (60.0, 90.0)   # "productive challenge": passed, but not trivially easy
 
@@ -36,9 +36,15 @@ class LearnerState:
         self.topic_scores = defaultdict(list)
         self.mastery: dict[str, float] = {}
         self.quiz_counts = defaultdict(int)
+        self.n_answers = 0            # question-level evidence: answers given so far ...
+        self.n_correct = 0            # ... and how many were right
+
+    def _prior_knowledge(self) -> float:
+        """P(known) for a skill not yet tested: the BKT prior given how this learner has answered so far."""
+        return self.bkt.initial_knowledge(self.n_correct, self.n_answers)
 
     def _skill_mastery(self, skill: str) -> float:
-        return self.mastery.get(skill, self.bkt.p_init)
+        return self.mastery.get(skill, self._prior_knowledge())
 
     def features(self, quiz: dict) -> dict:
         s = self.scores
@@ -52,9 +58,11 @@ class LearnerState:
             "topic_prior_mean": float(np.mean(topic)) if topic else np.nan,
             "level": int(quiz["level"]),
             "format_match": int(bool(self.preferred_format) and quiz.get("content_format") == self.preferred_format),
-            "quiz_skill_mastery": float(np.mean([self._skill_mastery(k) for k in skills])) if skills else self.bkt.p_init,
-            "overall_mastery": float(np.mean(list(self.mastery.values()))) if self.mastery else self.bkt.p_init,
+            "quiz_skill_mastery": float(np.mean([self._skill_mastery(k) for k in skills])) if skills else self._prior_knowledge(),
+            "overall_mastery": float(np.mean(list(self.mastery.values()))) if self.mastery else self._prior_knowledge(),
             "is_retake": int(self.quiz_counts[quiz["quiz_id"]] > 0),
+            "prior_answers": self.n_answers,
+            "prior_correct": self.n_correct,
         }
 
     def context(self) -> np.ndarray:
@@ -63,7 +71,7 @@ class LearnerState:
         return np.array([
             1.0,
             (np.mean(s) if s else 75.0) / 100.0,
-            float(np.mean(list(self.mastery.values()))) if self.mastery else self.bkt.p_init,
+            float(np.mean(list(self.mastery.values()))) if self.mastery else self._prior_knowledge(),
             min(len(s), 10) / 10.0,
             (float(np.mean(s[-3:]) - np.mean(s)) / 100.0) if len(s) >= 2 else 0.0,
         ])
@@ -72,12 +80,10 @@ class LearnerState:
         self.scores.append(float(score))
         self.topic_scores[quiz["topic"]].append(float(score))
         self.quiz_counts[quiz["quiz_id"]] += 1
-        b = self.bkt
         for skill, correct in answers:
-            L = self._skill_mastery(skill)
-            p = L * (1 - b.p_slip) + (1 - L) * b.p_guess
-            post = L * (1 - b.p_slip) / p if correct else L * b.p_slip / (1 - p)
-            self.mastery[skill] = post + (1 - post) * b.p_learn
+            self.mastery[skill] = self.bkt.update_knowledge(self._skill_mastery(skill), correct)
+            self.n_correct += int(bool(correct))
+            self.n_answers += 1
 
 
 def quiz_meta(row) -> dict:

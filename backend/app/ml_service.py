@@ -187,14 +187,42 @@ class MLService:
         obs, per_attempt = answer_observations(att, f["questions"])
         return hist, att, obs, per_attempt
 
+    @staticmethod
+    def _scope(db: Session, hist: pd.DataFrame, course_id: int | None) -> Course | None:
+        """The enrolled course a view is limited to (None = whole learner). Never exposes other courses."""
+        if course_id is None:
+            return None
+        course = db.get(Course, course_id)
+        if course is None or course_id not in set(hist["course_id"].astype(int)):
+            raise NotFound(f"The student is not enrolled in course {course_id}")
+        return course
+
+    @staticmethod
+    def _scope_info(course: Course | None) -> dict | None:
+        return None if course is None else {"course_id": course.id, "course_code": course.code,
+                                           "course_title": course.title}
+
+    SCOPE_NOTE = ("The models are trained jointly on all learners (shared BKT parameters, peer similarity and "
+                  "difficulty bandit); a course scope filters or conditions this learner's own data on one "
+                  "enrolled course. There are no separate per-course models.")
+
     def provenance(self, student: Student) -> dict:
         return {"model_output": True, "trained_at": self.trained_at,
                 "student_history": "synthetic (seeded)" if student.is_synthetic else "real (created in this app)"}
 
-    def recommendations(self, db: Session, student_id: int, method: str = "hybrid", limit: int = 5) -> dict:
+    def recommendations(self, db: Session, student_id: int, method: str = "hybrid", limit: int = 5,
+                        course_id: int | None = None) -> dict:
         student = self._student(db, student_id)
         hist, *_ = self._student_frames(db, student_id)
-        items = self.recommender.recommend(hist, student.preferred_content, method=method, n=limit)
+        course = self._scope(db, hist, course_id)
+        archived = set(db.scalars(select(Course.id).where(Course.is_active.is_(False))))
+        pool = self.recommender.recommend(hist, student.preferred_content, method=method,
+                                          n=limit if course is None else len(self.courses))
+        items = [i for i in pool if i["course_id"] not in archived]
+        if course is not None:      # "what to take next, given this course": same topic, or unlocked by it
+            unlocked_by = {int(c["id"]) for _, c in self.courses.iterrows() if course.id in c["prerequisite_ids"]}
+            items = [i for i in items if i["topic"] == course.topic or i["course_id"] in unlocked_by]
+        items = items[:limit]
         rec_report = self.report["recommendations"]
         ev = rec_report["methods"][method]
         cmp = rec_report["protocols"]["unlocked_courses"]["vs_popularity_ndcg"].get(method)
@@ -202,18 +230,24 @@ class MLService:
                 "evaluation": {"ndcg_at_5": ev["ndcg_at_k"], "hit_rate_at_5": ev["hit_rate_at_k"],
                                "popularity_ndcg_at_5": rec_report["methods"]["popularity"]["ndcg_at_k"],
                                "beats_popularity": cmp["significant"] if cmp else None},
+                "scope": self._scope_info(course),
                 **self.provenance(student)}
 
-    def skills(self, db: Session, student_id: int) -> dict:
+    def skills(self, db: Session, student_id: int, course_id: int | None = None) -> dict:
         student = self._student(db, student_id)
         hist, _att, obs, _ = self._student_frames(db, student_id)
+        course = self._scope(db, hist, course_id)
         mastery = self.bkt.mastery(obs)
+        if course is not None:
+            mastery = {k: v for k, v in mastery.items() if k in set(course.skills)}
         skill_topic = {s: (c["topic"], c["title"]) for _, c in self.courses.iterrows() for s in c["skills"]}
         skills = [{"skill": s, "topic": skill_topic.get(s, ("Other", ""))[0], **m,
                    "mastered": m["mastery"] >= MASTERY_THRESHOLD} for s, m in mastery.items()]
         skills.sort(key=lambda x: x["mastery"])
         # Gaps that matter now: assessed-but-weak skills, plus untested skills of active courses.
         active_ids = set(hist.loc[hist["status"] == "active", "course_id"].astype(int))
+        if course is not None:
+            active_ids = {course.id}
         upcoming = sorted({s for _, c in self.courses.iterrows() if int(c["id"]) in active_ids for s in c["skills"]}
                           - set(mastery))
         topics = {}
@@ -227,14 +261,18 @@ class MLService:
                                   for t, v in topics.items()), key=lambda x: x["mean_mastery"]),
                 "evaluation": self.report["knowledge_tracing"]["results"],
                 "beats_baseline": self.report["knowledge_tracing"]["beats_best_baseline"],
+                "scope": self._scope_info(course),
                 **self.provenance(student)}
 
     def _state(self, student, att, per_attempt):
         return build_state(att, per_attempt, student.preferred_content, self.bkt)
 
-    def adaptive_difficulty(self, db: Session, student_id: int) -> dict:
+    def adaptive_difficulty(self, db: Session, student_id: int, course_id: int | None = None) -> dict:
         student = self._student(db, student_id)
-        _hist, att, _obs, per_attempt = self._student_frames(db, student_id)
+        hist, att, _obs, per_attempt = self._student_frames(db, student_id)
+        course = self._scope(db, hist, course_id)
+        if course is not None:      # the bandit context is built from this learner's attempts in this course only
+            att = att[att["course_id"] == course.id]
         state = self._state(student, att, per_attempt)
         x = state.context()
         est = self.bandit.arm_estimates(x)
@@ -251,6 +289,7 @@ class MLService:
                 "reward_definition": "quiz score in [60, 90): passed but challenging",
                 "evaluation": self.report["adaptive_difficulty"]["reward_model"],
                 "beats_baseline": self.report["adaptive_difficulty"]["beats_baseline"],
+                "scope": self._scope_info(course),
                 **self.provenance(student)}
 
     def observe_attempt(self, db: Session, student_id: int, attempt_id: int) -> None:
@@ -268,23 +307,26 @@ class MLService:
         with self._lock:
             self.bandit.update(x, int(row["level"]), zone_reward(float(row["score"])))
 
-    def predictions(self, db: Session, student_id: int) -> dict:
+    def predictions(self, db: Session, student_id: int, course_id: int | None = None) -> dict:
         student = self._student(db, student_id)
         hist, att, _obs, per_attempt = self._student_frames(db, student_id)
         state = self._state(student, att, per_attempt)
+        course = self._scope(db, hist, course_id)
         active = hist[hist["status"].isin(["active", "completed"])]["course_id"].astype(int).tolist()
+        if course is not None:
+            active = [c for c in active if c == course.id]
         quizzes = {int(c.id): c for c in db.scalars(select(Course).where(Course.id.in_(active)))}
         items = []
         for cid in active:
-            course = quizzes[cid]
-            for quiz in course.quizzes:
-                meta = {"quiz_id": quiz.id, "topic": course.topic, "level": course.level,
-                        "content_format": course.content_format, "skills": course.skills}
+            enrolled = quizzes[cid]
+            for quiz in enrolled.quizzes:
+                meta = {"quiz_id": quiz.id, "topic": enrolled.topic, "level": enrolled.level,
+                        "content_format": enrolled.content_format, "skills": enrolled.skills}
                 feats = pd.DataFrame([state.features(meta)])[FEATURES]
                 pred = float(np.clip(self.performance.predict(feats)[0], 0, 100))
                 taken = int(state.quiz_counts.get(quiz.id, 0))
                 items.append({"quiz_id": quiz.id, "quiz_title": quiz.title, "course_id": cid,
-                              "course_title": course.title, "status": hist.loc[hist["course_id"] == cid, "status"].iloc[0],
+                              "course_title": enrolled.title, "status": hist.loc[hist["course_id"] == cid, "status"].iloc[0],
                               "predicted_score": round(pred, 1), "expected_error_mae": self.performance_mae,
                               "pass_probability_hint": "likely" if pred - self.performance_mae >= quiz.pass_score
                               else "uncertain" if pred + self.performance_mae >= quiz.pass_score else "at risk",
@@ -293,7 +335,31 @@ class MLService:
         return {"student_id": student_id, "items": items,
                 "evaluation": self.report["performance_prediction"]["results"],
                 "beats_baseline": self.report["performance_prediction"]["beats_baseline"],
+                "scope": self._scope_info(course),
                 **self.provenance(student)}
+
+    def guidance(self, db: Session, student_id: int, course_id: int) -> dict:
+        """Personalised guidance for ONE enrolled course, composed from the existing scoped model outputs."""
+        student = self._student(db, student_id)
+        hist, *_ = self._student_frames(db, student_id)
+        course = self._scope(db, hist, course_id)
+        skills = self.skills(db, student_id, course_id)
+        difficulty = self.adaptive_difficulty(db, student_id, course_id)
+        predictions = self.predictions(db, student_id, course_id)
+        nxt = self.recommendations(db, student_id, limit=3, course_id=course_id)
+        actions = []
+        weak = [s for s in skills["skills"] if not s["mastered"]][:3]
+        if weak:
+            actions.append("Revise " + ", ".join(s["skill"] for s in weak) + " (below the mastery threshold).")
+        if skills["not_yet_assessed"]:
+            actions.append("Take the course quiz to assess: " + ", ".join(skills["not_yet_assessed"][:4]) + ".")
+        actions.append(f"Aim for {difficulty['recommended_difficulty']}-level practice next.")
+        for p in predictions["items"][:1]:
+            actions.append(f"Predicted score on '{p['quiz_title']}': {p['predicted_score']:.0f}% "
+                           f"({p['pass_probability_hint']} to pass).")
+        return {"student_id": student_id, "scope": self._scope_info(course), "actions": actions,
+                "skills": skills, "difficulty": difficulty, "predictions": predictions, "next_courses": nxt,
+                "note": self.SCOPE_NOTE, **self.provenance(student)}
 
     def learning_style(self, db: Session, student_id: int) -> dict:
         student = self._student(db, student_id)

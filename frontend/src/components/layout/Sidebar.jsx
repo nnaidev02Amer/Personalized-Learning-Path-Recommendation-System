@@ -1,20 +1,27 @@
 import { NavLink } from 'react-router-dom'
 import { GraduationCap, X } from 'lucide-react'
-import { NAV_ITEMS } from './navigation'
+import { useAuth } from '../../context/AuthContext'
+import { ADMIN_NAV, STUDENT_NAV } from './navigation'
 
-function NavItems({ onNavigate }) {
+function NavGroup({ items, onNavigate, label }) {
   return (
-    <nav className="flex flex-col gap-1" aria-label="Main">
-      {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+    <nav className="flex flex-col gap-1" aria-label={label || 'Main'}>
+      {label && <p className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-ink-3">{label}</p>}
+      {items.map(({ to, label: text, icon: Icon, end }) => (
         <NavLink key={to} to={to} end={end} onClick={onNavigate}
                  className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors
                    ${isActive ? 'bg-brand-soft text-brand' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
           <Icon className="size-[18px] shrink-0" aria-hidden />
-          {label}
+          {text}
         </NavLink>
       ))}
     </nav>
   )
+}
+
+function NavItems({ onNavigate }) {
+  const { isAdmin } = useAuth()
+  return <NavGroup items={isAdmin ? ADMIN_NAV : STUDENT_NAV} onNavigate={onNavigate} label={isAdmin ? 'Administration' : undefined} />
 }
 
 function Brand() {

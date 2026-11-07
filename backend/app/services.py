@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.app import schemas
 from backend.app.errors import Conflict, Invalid, NotFound
-from backend.app.models import (ActivityLog, Course, Enrollment, Lesson, LessonCompletion, Quiz,
+from backend.app.models import (ActivityLog, Course, Enrollment, EnrollmentRequest, Lesson, LessonCompletion, Quiz,
                                 QuizAttempt, Student, utcnow)
 
 
@@ -40,7 +40,8 @@ def course_summary(course: Course, stats: dict) -> dict:
                 level=course.level, duration_hours=course.duration_hours, skills=course.skills,
                 lesson_count=len(course.lessons),
                 prerequisite_codes=[p.code for p in course.prerequisites],
-                enrolled_count=enrolled, average_rating=rating)
+                enrolled_count=enrolled, average_rating=rating, is_active=course.is_active,
+                is_locked=course.is_locked)
 
 
 def quiz_summary(quiz: Quiz) -> dict:
@@ -74,6 +75,8 @@ def attempt_out(a: QuizAttempt) -> dict:
 
 # ------------------------------------------------------------ enrolment rules
 def enroll(db: Session, student: Student, course: Course) -> Enrollment:
+    if not course.is_active:
+        raise Conflict(f"{course.code} is archived and not open for enrolment", code="course_archived")
     existing = db.scalar(select(Enrollment).where(Enrollment.student_id == student.id,
                                                   Enrollment.course_id == course.id))
     if existing is not None:
@@ -97,6 +100,57 @@ def enroll(db: Session, student: Student, course: Course) -> Enrollment:
     db.commit()
     db.refresh(enrollment)
     return enrollment
+
+
+def _check_prerequisites(db: Session, student: Student, course: Course) -> None:
+    completed = set(db.scalars(select(Enrollment.course_id).where(
+        Enrollment.student_id == student.id, Enrollment.status == "completed")))
+    missing = [p for p in course.prerequisites if p.id not in completed]
+    if missing:
+        raise Conflict(f"Complete the prerequisites for {course.code} first",
+                       details=[{"id": p.id, "code": p.code, "title": p.title} for p in missing],
+                       code="prerequisites_not_met")
+
+
+def request_out(r: EnrollmentRequest) -> dict:
+    return dict(id=r.id, student_id=r.student_id, student_name=r.student.name, student_email=r.student.email,
+                course=r.course, status=r.status, note=r.note, requested_at=r.requested_at,
+                decided_at=r.decided_at)
+
+
+def request_enrollment(db: Session, student: Student, course: Course) -> EnrollmentRequest:
+    """A student asks to join a course; nothing is enrolled until an administrator approves."""
+    if not course.is_active:
+        raise Conflict(f"{course.code} is archived and not open for enrolment", code="course_archived")
+    if not course.is_locked:
+        raise Conflict(f"{course.code} is open: enrol directly, no request is needed", code="course_unlocked")
+    existing = db.scalar(select(Enrollment).where(Enrollment.student_id == student.id,
+                                                  Enrollment.course_id == course.id))
+    if existing is not None and existing.status != "dropped":
+        raise Conflict(f"You are already enrolled in {course.code}", code="already_enrolled")
+    if db.scalar(select(EnrollmentRequest.id).where(
+            EnrollmentRequest.student_id == student.id, EnrollmentRequest.course_id == course.id,
+            EnrollmentRequest.status == "pending")):
+        raise Conflict(f"You already have a pending request for {course.code}", code="request_pending")
+    _check_prerequisites(db, student, course)
+    request = EnrollmentRequest(student_id=student.id, course_id=course.id, status="pending")
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+def decide_request(db: Session, request: EnrollmentRequest, approve: bool, admin_user_id: int,
+                   note: str | None = None) -> EnrollmentRequest:
+    if request.status != "pending":
+        raise Conflict(f"This request was already {request.status}", code="request_not_pending")
+    if approve:
+        enroll(db, request.student, request.course)       # re-checks archive/prerequisites; commits
+    request.status = "approved" if approve else "rejected"
+    request.note = (note or "").strip() or None
+    request.decided_at, request.decided_by = utcnow(), admin_user_id
+    db.commit()
+    return request
 
 
 def update_enrollment(db: Session, e: Enrollment, data: schemas.EnrollmentUpdate) -> Enrollment:

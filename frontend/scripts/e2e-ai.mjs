@@ -8,7 +8,7 @@
 
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { DIALOG, launch, reporter, sleep, text } from './lib/browser.mjs'
+import { DIALOG, approveRequests, createStudentAccount, launch, removeStudent, reporter, sleep, text } from './lib/browser.mjs'
 
 const BASE = (process.env.E2E_URL || 'http://127.0.0.1:5173').replace(/\/$/, '')
 const SHOTS = process.env.E2E_SCREENSHOTS
@@ -23,9 +23,8 @@ const recList = () => evaluate(`[...(document.querySelector('main ol')?.querySel
 const beginnerObservations = async () => Number((await bodyText()).match(/learned from (\d+) attempts/)?.[1] ?? -1)
 
 async function offline() {
-  await goto('/')
+  await goto('/login')
   step('Offline: app explains the backend is not reachable', await waitFor(text('Backend not reachable'), 15000))
-  step('Offline: top bar shows API offline', await waitFor(text('API offline'), 15000))
   step('Offline: start command is shown to the user', await waitFor(text('uvicorn backend.app.main:app'), 5000))
 }
 
@@ -33,32 +32,16 @@ async function online() {
   const health = await api('/health').catch(() => null)
   step('Backend reachable', health?.status === 'ok')
   if (!health) throw new Error('Backend not reachable - start it first (or set E2E_OFFLINE=1)')
-
-  const email = `ai.e2e.${Date.now()}@example.edu`
-  const student = await api('/students', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'AI Flow Tester', email, age: 27, preferred_content: 'Videos', learning_style: 'Visual' }) })
-  const sid = student.id
+  if (!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD) throw new Error('Set E2E_EMAIL and E2E_PASSWORD (an administrator of a disposable database)')
+  const { E2E_EMAIL, E2E_PASSWORD } = process.env
+  const account = await createStudentAccount(BASE, E2E_EMAIL, E2E_PASSWORD, 'AI Flow Tester')
+  const sid = account.studentId
   try {
-    // Select the test student the way a user does: through the top-bar student switcher.
+    await b.login(account.email, account.password)
+    const viewing = (await api('/auth/me')).user.student_id === sid
+    step('Signed in as the new test student', viewing)
+    if (!viewing) throw new Error('Not signed in as the test student; aborting before any changes')
     await goto('/learning')
-    await waitFor(`/Student #\\d+/.test(document.querySelector('[aria-haspopup=listbox]')?.innerText || '')`, 15000)
-    await evaluate(`document.querySelector('[aria-haspopup=listbox]').click()`)
-    await waitFor(`document.querySelector('input[aria-label="Search students"]')`)
-    await evaluate(`(() => {
-      const input = document.querySelector('input[aria-label="Search students"]')
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(email)})
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    })()`)
-    await waitFor(`[...document.querySelectorAll('[role=option]')].some((o) => o.innerText.includes('#${sid}'))`, 10000)
-    await evaluate(`[...document.querySelectorAll('[role=option]')].find((o) => o.innerText.includes('#${sid}')).click()`)
-    const viewing = await waitFor(`document.querySelector('[aria-haspopup=listbox]')?.innerText.includes('Student #${sid}')`, 15000)
-    step('Viewing the new test student', viewing)
-    // Safety: never act on seeded students. Abort before any click if the test student is not selected.
-    if (!viewing) {
-      const seen = await evaluate(`JSON.stringify({ stored: localStorage.getItem('currentStudentId'),
-        switcher: document.querySelector('[aria-haspopup=listbox]')?.innerText, path: location.pathname })`)
-      throw new Error(`Test student ${sid} is not selected (${seen}); aborting before any changes`)
-    }
 
     // ---- empty states for a brand-new student
     step('Empty state: My Learning has no active courses', await waitFor(text('No active courses')))
@@ -89,8 +72,9 @@ async function online() {
     await waitFor(text('Python Fundamentals'))
     await click('Python Fundamentals')
     await waitFor(text('Lessons (5)'))
-    await click('Enroll', DIALOG)
-    step('Enrolled in Python Fundamentals via the UI', await waitFor(text('You are now enrolled in Python Fundamentals')))
+    await click('Request access', DIALOG)
+    step('Requested Python Fundamentals via the UI', await waitFor(text('Request sent')))
+    step('Administrator approves the request', (await approveRequests(BASE, E2E_EMAIL, E2E_PASSWORD, account.studentId)) === 1)
 
     await goto('/recommendations')
     step('After enrolling: prediction appears for the new course',
@@ -135,13 +119,15 @@ async function online() {
     step('Assistant answers with the predicted score', await waitFor(`${text('Predicted quiz scores')} || document.body.innerText.split('Answered by').length > 2`, 30000))
 
     // ---- dashboard + roadmap use model outputs
-    await goto('/')
+    await goto('/dashboard')
     step('Dashboard "Recommended for you" lists model recommendations',
       await waitFor(`${text('Recommended for you')} && [...document.querySelectorAll('main ol')].some((ol) => ol.children.length >= 1)`, 20000))
     await goto('/roadmap')
     step('Roadmap next steps are ML-ranked', await waitFor(text('ML ranked'), 20000))
 
-    // ---- model evaluation: protocol switch + retrain includes the new real student
+    // ---- model evaluation (administrator only): sign out and in as the administrator, then back
+    await b.logout()
+    await b.login(E2E_EMAIL, E2E_PASSWORD)
     await goto('/models')
     await waitFor(text('candidates on average'), 20000)
     const candBefore = (await bodyText()).match(/([\d.]+) candidates on average/)?.[1]
@@ -150,14 +136,17 @@ async function online() {
     const candAfter = (await bodyText()).match(/([\d.]+) candidates on average/)?.[1]
     step('Evaluation protocol tab switches the table', candBefore && candAfter && candBefore !== candAfter, `${candBefore} -> ${candAfter}`)
     await click('Retrain on current data')
-    step('Retrain button retrains the models', await waitFor(text('Models retrained'), 60000))
+    step('Retrain button retrains the models', await waitFor(text('Models retrained'), Number(process.env.E2E_RETRAIN_TIMEOUT_MS) || 60000))
     const real = Number((await bodyText()).match(/(\d+) of \d+ students were created in this app/)?.[1] ?? 0)
     step('Retrained models count real (app-created) students', real >= 1, `${real} real`)
+
+    await b.logout()
+    await b.login(account.email, account.password)
 
     // ---- loading state under a slow network
     await b.send('Network.emulateNetworkConditions', { offline: false, latency: 1500, downloadThroughput: -1, uploadThroughput: -1 })
     await b.send('Page.navigate', { url: `${BASE}/analytics` })
-    step('Loading skeleton is shown while data loads', await waitFor('document.querySelector(".skeleton")', 8000))
+    step('Loading skeleton is shown while data loads', await waitFor('document.querySelector(".skeleton")', 25000))
     await b.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 })
     await waitFor(text('Progress & Analytics'), 15000)
 
@@ -193,7 +182,7 @@ async function online() {
     }
     await b.send('Emulation.clearDeviceMetricsOverride')
   } finally {
-    await api(`/students/${sid}`, { method: 'DELETE' }).catch(() => {})
+    await removeStudent(BASE, process.env.E2E_EMAIL, process.env.E2E_PASSWORD, sid).catch(() => {})
   }
 }
 

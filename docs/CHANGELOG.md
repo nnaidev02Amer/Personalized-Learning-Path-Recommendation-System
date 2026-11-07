@@ -1,5 +1,62 @@
 # Changelog
 
+## Authentication, roles and course-scoped ML (branch `feature/auth`)
+
+### Added
+* **Course lock / hide**: `courses.is_locked` (migration `0004`, existing courses stay locked). Unlocked courses are joined
+  directly; locked ones need an access request. Admin Courses page: Lock/Unlock, Hide/Unhide, Create, Delete.
+* **Approval workflow**: students register, browse and send *enrolment requests*; the administrator approves or rejects
+  them (new `enrollment_requests` table, migration `0003`). Direct student enrolment is now administrator-only. Pending and
+  rejected requests never reach enrolments or the ML models.
+* **Exactly one administrator**: partial unique index `uq_single_admin`; `create_admin` refuses a second admin and gained
+  `--generate-password`; separate **Admin login** page (`/admin/login`) that refuses student accounts (and vice versa).
+* **Open student registration** (`ALLOW_SELF_REGISTRATION` now defaults to `true`; it can never create an administrator).
+* **Admin dashboard**: registered students, pending/approved/rejected requests, students enrolled per course, student
+  progress/performance; new *Enrollment requests* page. `python -m backend.app.reset_users` removes all logins after a
+  verified backup, keeping courses and the ML sample learners.
+* **Sign-in with two roles** (administrator / student): Argon2id password hashing, server-side sessions in an `HttpOnly`
+  `SameSite=Lax` cookie (token stored only as a hash), per-session CSRF token + `Origin` check, explicit CORS origins with
+  credentials, login rate limiting and account lockout. No default account: `python -m backend.app.create_admin`.
+* **Authorisation on every route.** Students reach only their own records (others answer `404`); student creation and
+  deletion, the student list, course management, accounts, Model Evaluation/status/retrain are administrator-only.
+* **Registration**: `ALLOW_SELF_REGISTRATION` (default `false`); always creates a new profile. Only administrators link
+  a login to an existing student.
+* **Administration**: overview and monitoring table, account management, course create/edit/archive/delete.
+* **Course-scoped ML inference** (`?course_id=` and `/students/{id}/courses/{course_id}/guidance`), recommendation history,
+  archived courses never recommended. Models are still trained jointly on all learners; the ML algorithms are unchanged.
+* **Alembic migrations** (`0001` baseline, `0002` additive): `users`, `auth_sessions`, `recommendation_history`,
+  `courses.is_active`. `python -m backend.app.migrate [--dry-run]` backs up, migrates and verifies row counts; the app never
+  migrates an existing database by itself.
+* Frontend: login/register, route guards, administrator pages, course Insights, recommendation history.
+* Tests: 104 new tests (migrations, authentication, authorisation/isolation, course-scoped ML); existing API tests now run
+  as an authenticated administrator. New browser test `npm run e2e:auth`.
+
+### Changed
+* Role-exclusive interface: administrators see only the administration menu and pages, students only the student pages;
+  wrong-role URLs redirect to the user's own dashboard; the admin "view as student" switcher was removed; sign-in sends
+  each role to its own dashboard; user state is cleared on logout/account switch. Browser tests now sign in as a student.
+* `GET /api/health` shows row counts only to signed-in users. The e2e scripts need `E2E_EMAIL` / `E2E_PASSWORD`.
+* The score-prediction response's `scope` is correct for unscoped calls (a loop variable no longer shadows it).
+
+## QA fixes – AI/ML (BKT mastery, score prediction)
+
+### Fixed
+* **Skill mastery (BKT) called a skill "mastered" after 0 of 3 correct.** Root causes: one shared prior
+  for every learner (ignoring how they perform elsewhere) and a fit that drifted to a corner of the
+  parameter grid (p_learn 0.45) on a nearly flat likelihood, which lets mastery recover after any number
+  of wrong answers. Now: individualised prior (fitted shrinkage strength), degeneracy-bounded grid, and the
+  most conservative of the statistically equivalent fits. 0 of 3 correct → mastery 0.38 (gap), held-out AUC
+  0.541 → 0.626.
+* **Score prediction contradicted the learner's quiz history** (0% × 3 predicted 83–90, "likely").
+  Root causes: only 1 of ~750 training rows came from a struggling learner, so the boosted trees
+  extrapolated arbitrarily, and the response to the learner's own prior score was not monotonic. Now an
+  ability-anchored model: empirical-Bayes ability from all earlier answers + monotone boosted residual.
+  MAE 16.0 → 15.9, R² 0.03 → 0.06, improvement over the best baseline now significant.
+* Tests: `tests/test_ml_regression.py` and `tests/backend/test_ml_regression_api.py` (24 tests, 12 of which fail on the
+  previous code).
+* API: `knowledge_tracing.params` gains `prior_strength` (null = classic BKT); performance evaluation gains
+  `ability_only`, `vs_ability_only_abs_error`, `ability_prior_strength`. Existing keys are unchanged.
+
 ## Phase 7 – Local run on Windows
 
 ### Fixed

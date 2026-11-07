@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Clock, Database, Save, Trash2, UserPlus } from 'lucide-react'
 import { api } from '../api/client'
 import { useApi } from '../hooks/useApi'
+import { useAuth } from '../context/AuthContext'
 import { useStudent } from '../context/StudentContext'
 import { useToast } from '../context/ToastContext'
 import PageHeader from '../components/ui/PageHeader'
@@ -77,6 +78,7 @@ function LogStudyTime({ studentId, onLogged }) {
 
 export default function Profile() {
   const { student, setStudent, setStudentId, refresh } = useStudent()
+  const { isAdmin } = useAuth()
   const toast = useToast()
   const [values, setValues] = useState(null)
   const [createOpen, setCreateOpen] = useState(false)
@@ -132,7 +134,7 @@ export default function Profile() {
     }
   }
 
-  const createButton = <Button icon={UserPlus} variant="secondary" onClick={() => { create.setErrors({}); setCreateOpen(true) }}>New student</Button>
+  const createButton = !isAdmin ? null : <Button icon={UserPlus} variant="secondary" onClick={() => { create.setErrors({}); setCreateOpen(true) }}>New student</Button>
 
   const createModal = (
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create a new student" size="lg"
@@ -154,7 +156,7 @@ export default function Profile() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Student Profile" description="Your details and learning preferences." actions={createButton} />
+      <PageHeader title="Student Profile" description={isAdmin ? `Viewing ${student.name} as an administrator.` : 'Your details and learning preferences.'} actions={createButton} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -179,12 +181,12 @@ export default function Profile() {
             <StudentForm initial={initial} errors={edit.errors} onChange={onEditChange} disabled={edit.busy} />
           </Card>
 
-          <Card title="Danger zone">
+          {isAdmin && <Card title="Danger zone">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-ink-2">Delete this student and all of their enrolments, quiz attempts and activity.</p>
               <Button variant="danger-outline" icon={Trash2} onClick={() => setDeleteOpen(true)}>Delete student</Button>
             </div>
-          </Card>
+          </Card>}
         </div>
         <LogStudyTime studentId={student.id} onLogged={refresh} />
       </div>

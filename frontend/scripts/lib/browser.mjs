@@ -108,7 +108,36 @@ export async function launch({ base, port = 9333 }) {
       const res = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true })
       writeFileSync(file, Buffer.from(res.result.data, 'base64'))
     },
-    api: (path, init) => fetch(`${base}/api${path}`, init).then((r) => (r.status === 204 ? null : r.json())),
+    // Node-side API calls carry the session cookie and CSRF token obtained by login().
+    session: null,
+    api: (path, init = {}) => {
+      const headers = { ...(init.headers || {}) }
+      if (b.session) {
+        headers.Cookie = b.session.cookie
+        if ((init.method || 'GET') !== 'GET') headers['X-CSRF-Token'] = b.session.csrf
+      }
+      return fetch(`${base}/api${path}`, { ...init, headers }).then((r) => (r.status === 204 ? null : r.json()))
+    },
+    // Sign in twice: once for Node-side api() calls, once through the real login form in the browser.
+    async login(email, password) {
+      const res = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }) })
+      if (!res.ok) throw new Error(`login failed (${res.status}) - set E2E_EMAIL / E2E_PASSWORD to a valid account`)
+      const body = await res.json()
+      const admin = body.user.role === 'admin'                    // administrators use the separate Admin Login page
+      b.session = { cookie: res.headers.get('set-cookie').split(';')[0], csrf: body.csrf_token }
+      await send('Page.navigate', { url: `${base}${admin ? '/admin/login' : '/login'}` })
+      await b.waitFor('document.querySelector("main") && document.querySelector("input[type=password]")', 15000)
+      await b.fill('E-mail', email)
+      await b.fill('Password', password)
+      await b.click(admin ? 'Sign in as administrator' : 'Sign in')
+      await b.waitFor('!location.pathname.includes("/login") && document.querySelector("header")', 15000)
+    },
+    async logout() {
+      await b.click('Sign out')
+      await b.waitFor('location.pathname === "/login"', 10000)
+      b.session = null
+    },
     async close() {
       ws.close()
       proc.kill()
@@ -117,6 +146,42 @@ export async function launch({ base, port = 9333 }) {
     },
   }
   return b
+}
+
+// Create a disposable STUDENT account through the admin API (Node side) and remove it again afterwards.
+const jsonPost = (base, path, body, session) => fetch(`${base}/api${path}`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: session.cookie, 'X-CSRF-Token': session.csrf },
+  body: JSON.stringify(body) })
+async function adminSession(base, email, password) {
+  const res = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }) })
+  if (!res.ok) throw new Error(`admin login failed (${res.status}) - set E2E_EMAIL / E2E_PASSWORD to an administrator of a disposable database`)
+  return { cookie: res.headers.get('set-cookie').split(';')[0], csrf: (await res.json()).csrf_token }
+}
+export async function createStudentAccount(base, adminEmail, adminPassword, name = 'E2E Test Learner') {
+  const session = await adminSession(base, adminEmail, adminPassword)
+  const email = `e2e.${Date.now()}.${Math.floor(Math.random() * 1e4)}@example.edu`
+  const password = 'Violet-Anchor-Meadow-17'
+  const res = await jsonPost(base, '/admin/users', { name, email, age: 25, preferred_content: 'Videos', learning_style: 'Visual', password }, session)
+  if (res.status !== 201) throw new Error(`could not create the test student (${res.status})`)
+  return { email, password, studentId: (await res.json()).student_id }
+}
+/** Approve every pending enrolment request of a student (as the administrator, through the API). */
+export async function approveRequests(base, adminEmail, adminPassword, studentId) {
+  const session = await adminSession(base, adminEmail, adminPassword)
+  const headers = { Cookie: session.cookie, 'X-CSRF-Token': session.csrf }
+  const list = await (await fetch(`${base}/api/admin/enrollment-requests?status=pending&limit=100`, { headers })).json()
+  let approved = 0
+  for (const r of list.items.filter((x) => x.student_id === studentId)) {
+    const res = await fetch(`${base}/api/admin/enrollment-requests/${r.id}/approve`, { method: 'POST', headers })
+    if (res.ok) approved += 1
+  }
+  return approved
+}
+export async function removeStudent(base, adminEmail, adminPassword, studentId) {
+  const session = await adminSession(base, adminEmail, adminPassword)
+  const res = await fetch(`${base}/api/students/${studentId}`, { method: 'DELETE', headers: { Cookie: session.cookie, 'X-CSRF-Token': session.csrf } })
+  return res.status
 }
 
 export function reporter() {

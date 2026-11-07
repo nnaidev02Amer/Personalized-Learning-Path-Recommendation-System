@@ -14,6 +14,7 @@ import { courseStatuses } from '../utils/courseStatus'
 
 const STATUS_FILTERS = [
   { value: 'available', label: 'Available to start' },
+  { value: 'pending', label: 'Awaiting approval' },
   { value: 'active', label: 'In progress' },
   { value: 'completed', label: 'Completed' },
   { value: 'locked', label: 'Locked' },
@@ -29,9 +30,10 @@ export default function CourseCatalog() {
   const courses = useApi(() => api.courses.list({ search, topic: filters.topic, difficulty: filters.difficulty,
     content_format: filters.content_format }), [search, filters.topic, filters.difficulty, filters.content_format])
   const enrollments = useApi(() => api.enrollments.list(studentId), [studentId])
+  const requests = useApi(() => api.enrollmentRequests.list(studentId), [studentId])
 
-  const statuses = useMemo(() => courseStatuses(courses.data?.items, enrollments.data),
-    [courses.data, enrollments.data])
+  const statuses = useMemo(() => courseStatuses(courses.data?.items, enrollments.data, requests.data),
+    [courses.data, enrollments.data, requests.data])
   const items = (courses.data?.items || []).filter((c) => !filters.status || statuses.get(c.id)?.status === filters.status)
 
   const set = (key) => (e) => setFilters((f) => ({ ...f, [key]: e.target.value }))
@@ -78,7 +80,7 @@ export default function CourseCatalog() {
       </div>
 
       <CourseDetailModal courseId={openId} status={openId ? statuses.get(openId) : null}
-                         onClose={() => setOpenId(null)} onChanged={() => { enrollments.reload(); courses.reload() }} />
+                         onClose={() => setOpenId(null)} onChanged={() => { enrollments.reload(); requests.reload(); courses.reload() }} />
     </div>
   )
 }

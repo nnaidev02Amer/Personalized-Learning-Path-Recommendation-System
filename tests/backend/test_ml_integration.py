@@ -3,6 +3,7 @@
 import threading
 
 from fastapi.testclient import TestClient
+from conftest import ADMIN_EMAIL, ADMIN_PASSWORD, add_admin, login
 
 from api_helpers import assert_error
 from backend.app.config import Settings
@@ -43,7 +44,9 @@ def test_ml_endpoints_report_insufficient_data_clearly(tmp_path):
     settings = Settings(database_url=f"sqlite:///{(tmp_path / 'empty.db').as_posix()}", seed_on_startup=False,
                         ml_train_on_startup=False, cors_origins=("http://localhost:5173",))
     app = create_app(settings)
-    with TestClient(app) as client:
+    with TestClient(app):
+        add_admin(app)
+        client = login(app, ADMIN_EMAIL, ADMIN_PASSWORD)
         body = assert_error(client.get("/api/ml/evaluation"), 503, "ml_insufficient_data")
         assert "quiz attempts" in body["message"]
         sid = client.post("/api/students", json={"name": "Solo", "email": "solo@example.edu", "age": 30,

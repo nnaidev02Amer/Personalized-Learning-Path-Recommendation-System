@@ -36,12 +36,25 @@ class Database:
         self.SessionLocal = sessionmaker(bind=self.engine, autoflush=False, expire_on_commit=False)
 
     def create_all(self) -> None:
-        from backend.app import models  # noqa: F401  (registers tables)
-        Base.metadata.create_all(self.engine)
+        """Create the tables of a *new* database and stamp it at the current schema revision.
+
+        An existing database is never altered here: if it is not already current this raises
+        ``SchemaOutdated`` (migrate it explicitly with ``python -m backend.app.migrate``).
+        """
+        from backend.app import migrations, models  # noqa: F401  (registers tables)
+        state = migrations.schema_state(self.engine)
+        if state == "empty":
+            Base.metadata.create_all(self.engine)
+            migrations.stamp(self.engine)
+        elif state != "current":
+            raise migrations.SchemaOutdated(migrations.explain_outdated(state))
 
     def drop_all(self) -> None:
+        from sqlalchemy import text
         from backend.app import models  # noqa: F401
         Base.metadata.drop_all(self.engine)
+        with self.engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
 
     def session(self) -> Iterator[Session]:
         db = self.SessionLocal()

@@ -37,3 +37,13 @@ export function Select({ label, error, hint, options, placeholder, className = '
     </Field>
   )
 }
+
+export function Textarea({ label, error, hint, className = '', rows = 4, ...props }) {
+  const id = useId()
+  return (
+    <Field label={label} error={error} hint={hint} id={id}>
+      <textarea id={id} rows={rows} aria-invalid={Boolean(error)}
+                className={`${control} py-2 ${error ? 'border-critical' : ''} ${className}`} {...props} />
+    </Field>
+  )
+}

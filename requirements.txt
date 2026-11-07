@@ -17,5 +17,9 @@ uvicorn==0.54.0
 sqlalchemy==2.1.8
 python-dotenv==1.2.4
 
+# Authentication and schema migrations
+argon2-cffi==25.1.0
+alembic==1.20.1
+
 # Optional: Claude-powered assistant (used only when ANTHROPIC_API_KEY is set)
 anthropic==2.4.0

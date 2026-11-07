@@ -1,4 +1,4 @@
-import { Clock, Layers, Users } from 'lucide-react'
+import { Clock, KeyRound, Layers, Users } from 'lucide-react'
 import Badge, { DIFFICULTY_TONE } from '../ui/Badge'
 import StarRating from '../ui/StarRating'
 import ProgressBar from '../ui/ProgressBar'
@@ -18,6 +18,7 @@ export default function CourseCard({ course, status, onOpen }) {
       <div className="mt-3 flex flex-wrap gap-1.5">
         <Badge tone={DIFFICULTY_TONE[course.difficulty]}>{course.difficulty}</Badge>
         <Badge icon={FormatIcon}>{course.content_format}</Badge>
+        {course.is_locked && !status?.enrollment && <Badge tone="warning" icon={KeyRound}>Approval needed</Badge>}
       </div>
       <div className="mt-4 grid grid-cols-3 gap-2 text-xs text-ink-3">
         <span className="flex items-center gap-1"><Clock className="size-3.5" aria-hidden />{course.duration_hours}h</span>

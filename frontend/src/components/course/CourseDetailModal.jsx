@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, CheckCircle2, Circle, Clock, ListChecks, Lock, PlayCircle, RotateCcw } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Circle, Clock, Hourglass, ListChecks, Lock, PlayCircle, RotateCcw, Send, XCircle } from 'lucide-react'
 import { api } from '../../api/client'
 import { useApi } from '../../hooks/useApi'
 import { useStudent } from '../../context/StudentContext'
@@ -17,25 +17,42 @@ export default function CourseDetailModal({ courseId, status, onClose, onChanged
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [blocked, setBlocked] = useState(null)
+  const current = status?.status
   const { data: course, error, loading, reload } = useApi(courseId ? () => api.courses.get(courseId) : null, [courseId])
 
   const enroll = async () => {
     setBusy(true)
     setBlocked(null)
     try {
-      await api.enrollments.create(studentId, courseId)
-      toast.success('Enrolled', `You are now enrolled in ${course.title}.`)
+      if (current === 'dropped') await api.enrollments.update(status.enrollment.id, { status: 'active' })
+      else if (course.is_locked) await api.enrollmentRequests.create(studentId, courseId)
+      else await api.enrollments.create(studentId, courseId)
+      if (current === 'dropped') toast.success('Course resumed', `You can continue ${course.title}.`)
+      else if (course.is_locked) toast.success('Request sent', `An administrator will review your request for ${course.title}.`)
+      else toast.success('Enrolled', `You are now enrolled in ${course.title}.`)
       refresh()
       onChanged?.()
     } catch (e) {
       if (e.code === 'prerequisites_not_met') setBlocked(e)
-      else toast.error('Could not enroll', e.message)
+      else toast.error(course.is_locked ? 'Could not send the request' : 'Could not enroll', e.message)
     } finally {
       setBusy(false)
     }
   }
 
-  const current = status?.status
+  const cancelRequest = async () => {
+    setBusy(true)
+    try {
+      await api.enrollmentRequests.cancel(studentId, status.request.id)
+      toast.success('Request withdrawn', `Your request for ${course.title} was cancelled.`)
+      onChanged?.()
+    } catch (e) {
+      toast.error('Could not withdraw the request', e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const meta = STATUS_META[current || 'available']
   const done = new Set(status?.enrollment?.completed_lesson_ids || [])
   const FormatIcon = course ? FORMAT_ICON[course.content_format] : null
@@ -43,11 +60,15 @@ export default function CourseDetailModal({ courseId, status, onClose, onChanged
   let footer = null
   if (course) {
     if (current === 'active' || current === 'completed') {
-      footer = <Button icon={ArrowRight} onClick={() => navigate('/learning')}>Go to My Learning</Button>
+      footer = <Button icon={ArrowRight} onClick={() => navigate('/learning')}>{current === 'completed' ? 'Review in My Learning' : 'Start learning'}</Button>
     } else if (current === 'dropped') {
       footer = <Button icon={RotateCcw} loading={busy} onClick={enroll}>Resume course</Button>
+    } else if (current === 'pending') {
+      footer = <Button variant="secondary" icon={XCircle} loading={busy} onClick={cancelRequest}>Withdraw request</Button>
     } else {
-      footer = <Button icon={PlayCircle} loading={busy} onClick={enroll} disabled={current === 'locked'}>Enroll</Button>
+      footer = course.is_locked
+        ? <Button icon={Send} loading={busy} onClick={enroll} disabled={current === 'locked'}>Request access</Button>
+        : <Button icon={PlayCircle} loading={busy} onClick={enroll} disabled={current === 'locked'}>Enroll</Button>
     }
   }
 
@@ -66,6 +87,25 @@ export default function CourseDetailModal({ courseId, status, onClose, onChanged
             <Badge>{course.topic}</Badge>
           </div>
           <p className="text-sm leading-relaxed text-ink-2">{course.description}</p>
+
+          {course.is_locked && current !== 'pending' && !status?.enrollment && (
+            <p className="flex items-center gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-2">
+              <Lock className="size-4 shrink-0 text-warning" aria-hidden />This course is locked: send an access request and an administrator will review it.
+            </p>
+          )}
+          {current === 'pending' && (
+            <div className="rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm">
+              <p className="flex items-center gap-2 font-semibold text-warning"><Hourglass className="size-4" aria-hidden />Waiting for approval</p>
+              <p className="mt-1 text-ink-2">An administrator must approve your request before you can study this course.</p>
+            </div>
+          )}
+          {current !== 'pending' && status?.rejected && !status?.enrollment && (
+            <div className="rounded-xl border border-critical/30 bg-critical-soft p-4 text-sm">
+              <p className="font-semibold text-critical">Your last request was declined</p>
+              {status.rejected.note && <p className="mt-1 text-ink-2">Reason: {status.rejected.note}</p>}
+              <p className="mt-1 text-ink-2">You can send a new request.</p>
+            </div>
+          )}
 
           {(blocked || current === 'locked') && (
             <div className="rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm">

@@ -46,6 +46,32 @@ class InsufficientData(AppError):
     code = "ml_insufficient_data"
 
 
+class Unauthorized(AppError):
+    """No valid session (missing, expired, revoked or wrong credentials)."""
+    status_code = 401
+    code = "not_authenticated"
+
+
+class Forbidden(AppError):
+    status_code = 403
+    code = "forbidden"
+
+    def __init__(self, message: str = "You do not have permission to do that", details: list | None = None,
+                 code: str | None = None):
+        super().__init__(message, details)
+        if code:
+            self.code = code
+
+
+class TooManyRequests(AppError):
+    status_code = 429
+    code = "rate_limited"
+
+    def __init__(self, message: str, retry_after: int = 60):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 class Conflict(AppError):
     status_code = 409
     code = "conflict"
@@ -63,7 +89,9 @@ def _body(code: str, message: str, details: list | None = None) -> dict:
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(_: Request, exc: AppError):
-        return JSONResponse(_body(exc.code, exc.message, exc.details), status_code=exc.status_code)
+        headers = {"Retry-After": str(exc.retry_after)} if isinstance(exc, TooManyRequests) else None
+        return JSONResponse(_body(exc.code, exc.message, exc.details), status_code=exc.status_code,
+                            headers=headers)
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError):
@@ -84,7 +112,7 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, exc: StarletteHTTPException):
-        code = {404: "not_found", 405: "method_not_allowed"}.get(exc.status_code, "http_error")
+        code = {401: "not_authenticated", 403: "forbidden", 404: "not_found", 405: "method_not_allowed"}.get(exc.status_code, "http_error")
         return JSONResponse(_body(code, str(exc.detail)), status_code=exc.status_code)
 
     @app.exception_handler(Exception)

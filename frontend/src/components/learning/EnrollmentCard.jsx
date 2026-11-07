@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, ChevronDown, Circle, ListChecks, Pause, Play, RotateCcw } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Circle, Compass, ListChecks, Pause, Play, RotateCcw } from 'lucide-react'
 import { api } from '../../api/client'
 import { useApi } from '../../hooks/useApi'
 import { useStudent } from '../../context/StudentContext'
@@ -71,6 +71,9 @@ export default function EnrollmentCard({ enrollment, onUpdated, defaultOpen = fa
           {e.status === 'completed' && (
             <StarRating value={e.rating || 0} label="Rate this course"
                         onChange={(rating) => act('rate', () => api.enrollments.update(e.id, { rating }), ['Thanks!', `You rated this course ${rating}/5.`])} />
+          )}
+          {e.status !== 'dropped' && (
+            <Button size="sm" variant="secondary" icon={Compass} to={`/learning/${e.course.id}`}>Insights</Button>
           )}
           <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)} aria-expanded={open}
                   icon={ChevronDown} className={open ? '[&>svg]:rotate-180' : ''}>
