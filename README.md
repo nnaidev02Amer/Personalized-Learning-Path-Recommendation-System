@@ -204,13 +204,6 @@ Personalized-Learning-Path-Recommendation-System/
 ├── requirements.txt                 # runtime Python dependencies (pinned)
 ├── requirements-dev.txt             # + pytest, httpx
 ├── alembic.ini                      # migration settings (database URL comes from DATABASE_URL)
-├── sample_data.csv                  # original 100-student dataset (input to the seed and the ml pipeline)
-│
-├── Data-Preprocessing.py            # the 5 original root scripts, now thin wrappers over `python -m ml ...`
-├── Learning-Style-Classification.py
-├── Recommendation-Algorithm.py
-├── Adaptive-Learning-System.py
-├── Evaluation.py
 │
 ├── backend/
 │   └── app/
@@ -242,6 +235,7 @@ Personalized-Learning-Path-Recommendation-System/
 │   ├── style_model.py               # learning-style model (from the database)
 │   ├── preprocessing.py, learning_style.py, peer_recommender.py,
 │   │   adaptive_level.py, evaluation.py   # original profile pipeline (CSV based)
+│   └── legacy/                      # the 5 original scripts (thin wrappers over `python -m ml ...`)
 │
 ├── frontend/
 │   ├── package.json, package-lock.json, vite.config.js, index.html
@@ -278,8 +272,8 @@ Personalized-Learning-Path-Recommendation-System/
 ├── .venv/                           # (local only) Python virtual environment
 ├── frontend/node_modules/           # (local only) npm packages
 ├── frontend/dist/                   # (local only) production build output
-├── data/                            # (local only) app.db and data/processed/
-├── models/                          # (local only) artefacts of the CSV pipeline (*.pkl, *.csv)
+├── data/                            # sample_data.csv (original dataset, tracked); app.db, backups and processed/ are local only
+├── models/                          # trained artefacts of the CSV pipeline (*.pkl, *.csv; small, tracked)
 └── reports/                         # (local only) evaluation JSON written by the pipeline/backend
 ```
 
@@ -441,13 +435,13 @@ The migration is additive (new tables and one new column, existing rows untouche
 - 100 student profiles from `sample_data.csv` (age, learning style, preferred content, daily study time); names and emails are generated placeholders (`@example.edu`).
 - **Synthetic** enrolments, lesson completions, quiz attempts (with per-question answers and some retakes), ratings and 12 weeks of activity, generated from a documented learner simulator and anchored to the date of seeding. Students created through the app are marked as real (`is_synthetic = false`).
 
-**Optional: the original CSV-based ML pipeline** (independent of the web app; it writes into the git-ignored `data/processed/`, `models/` and `reports/`):
+**Optional: the original CSV-based ML pipeline** (independent of the web app; it writes into `data/processed/`, `models/` and `reports/`):
 
 ```powershell
 .\.venv\Scripts\python.exe -m ml all
 ```
 
-Individual steps: `preprocess`, `train-style`, `train-peers`, `train-adaptive`, `evaluate`. The original root scripts (for example `python Evaluation.py`) call the same commands.
+Individual steps: `preprocess`, `train-style`, `train-peers`, `train-adaptive`, `evaluate`. The original scripts, kept in `ml/legacy/` (for example `python ml/legacy/Evaluation.py`), call the same commands.
 
 ## 15. How to run the backend
 
@@ -726,7 +720,7 @@ Contributions are welcome.
 2. Set up the project as described in [section 12](#12-installation-and-setup) and run the tests before changing anything: `.\.venv\Scripts\python.exe -m pytest`.
 3. Keep changes focused; add or update tests next to the code you change (`tests/` for Python; the `frontend/scripts/` browser tests for UI flows).
 4. Run the full test suite and `npm run build` before opening a pull request.
-5. Never commit `.env`, API keys, database files or generated models/reports (they are git-ignored).
+5. Never commit `.env`, API keys, database files or `reports/` output (git-ignored).
 6. Describe what changed and why in the pull request; link evidence (test output, evaluation numbers) for model changes, and report results against the baselines.
 
 ## 27. License and original project attribution

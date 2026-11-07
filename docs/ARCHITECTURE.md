@@ -25,11 +25,10 @@
 ├── frontend/               # React + Vite + Tailwind + Recharts       [Phase 4] (see FRONTEND.md)
 ├── tests/                  # pytest suite
 ├── docs/                   # analysis, architecture, changelog
-├── data/                   # generated data (git-ignored)
-├── models/                 # trained artefacts (git-ignored)
+├── data/                   # sample_data.csv (original, never modified); app.db / processed/ are generated
+├── models/                 # trained artefacts (small, tracked)
 ├── reports/                # evaluation JSON (git-ignored)
-├── sample_data.csv         # original dataset – never modified
-└── *.py (5 root scripts)   # original entry points → thin wrappers over ml/
+└── ml/legacy/*.py          # 5 original entry points → thin wrappers over ml/
 ```
 
 ## Principles
@@ -49,7 +48,7 @@
 ## Student-profile pipeline (Phase 2)
 
 ```
-sample_data.csv
+data/sample_data.csv
    │  preprocessing.run()
    ├─► data/processed/clean_student_data.csv          (original units – model input)
    └─► data/processed/preprocessed_student_data.csv   (standardised – analysis/legacy)

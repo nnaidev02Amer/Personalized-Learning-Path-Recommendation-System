@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 # The original dataset shipped with the repository. It is read-only input.
-SAMPLE_DATA_PATH = ROOT_DIR / "sample_data.csv"
+SAMPLE_DATA_PATH = ROOT_DIR / "data" / "sample_data.csv"
 
 RANDOM_STATE = 42
 

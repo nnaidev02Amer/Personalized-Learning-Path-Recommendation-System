@@ -61,7 +61,7 @@ class AdaptiveLearningSystem:
         if not isinstance(loaded, AdaptiveLearningSystem):
             raise TypeError(
                 f"{MODEL_FILE} was created by an older version; retrain with "
-                "`python Adaptive-Learning-System.py`.")
+                "`python -m ml train-adaptive`.")
         self.reference = loaded.reference
         return self
 

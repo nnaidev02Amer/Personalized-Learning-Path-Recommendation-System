@@ -8,7 +8,7 @@ and can be run from any directory.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ml.preprocessing import DataPreprocessing  # noqa: E402,F401  (re-exported)
 from ml.cli import main  # noqa: E402

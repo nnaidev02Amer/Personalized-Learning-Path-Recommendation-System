@@ -12,7 +12,7 @@ history at tag `baseline-local-2026-11-04`.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ml.adaptive_level import AdaptiveLearningSystem  # noqa: E402,F401  (re-exported)
 from ml.cli import main  # noqa: E402

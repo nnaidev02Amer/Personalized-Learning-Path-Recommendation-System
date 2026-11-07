@@ -1,7 +1,7 @@
 """Command-line interface: ``python -m ml <command>``.
 
-The five original root scripts call these same commands, so
-``python Learning-Style-Classification.py`` and
+The five original scripts (``ml/legacy/``) call these same commands, so
+``python ml/legacy/Learning-Style-Classification.py`` and
 ``python -m ml train-style`` do exactly the same thing.
 """
 

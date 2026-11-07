@@ -20,7 +20,7 @@ SCRIPTS = ["Data-Preprocessing.py", "Learning-Style-Classification.py",
 def run_script(script, monkeypatch):
     monkeypatch.setattr(sys, "argv", [script])
     with pytest.raises(SystemExit) as exit_info:
-        runpy.run_path(str(ROOT / script), run_name="__main__")
+        runpy.run_path(str(ROOT / "ml" / "legacy" / script), run_name="__main__")
     return exit_info.value.code
 
 
